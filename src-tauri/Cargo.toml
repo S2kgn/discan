@@ -4,13 +4,21 @@ version = "0.1.0"
 description = "디스크 공간 분석기"
 authors = ["cheolju"]
 edition = "2021"
+# scan.rs 가 u64::is_multiple_of/div_ceil 을 쓴다(각각 1.87/1.73 안정화).
+# 명시하지 않으면 조금 오래된 툴체인에서 원인을 알기 어려운 컴파일 오류가 난다.
+rust-version = "1.87"
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "discan_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Tauri 템플릿 기본값은 모바일 대비로 ["staticlib", "cdylib", "rlib"] 이지만,
+# 이 프로젝트는 bundle.targets 가 nsis/msi 뿐이고 `mobile` cfg 가 켜지는 빌드가 없다.
+# release 프로필이 lto=true + codegen-units=1 이라 세 산출물이 **각각** 전체 LTO 를
+# 도는데 staticlib·cdylib 은 아무도 링크하지 않는다 — 릴리스 빌드 시간과 CI 캐시가
+# 근거 없이 배로 늘어난다. 모바일 대상을 실제로 추가하는 날 다시 늘리면 된다.
+crate-type = ["lib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -19,9 +27,28 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
+# 업데이터. 지금 필요한 것은 배포 산출물의 minisign 서명 검증뿐이라
+# 기본 feature 만 쓴다(공개키는 tauri.conf.json, 개인키는 저장소 바깥).
+tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
+# `generate_context!` 가 tauri.conf.json 의 plugins 설정을 코드로 굽을 때 쓴다
+# (플러그인 설정이 없던 시절에는 필요하지 않았다). 이미 의존성 트리에 있던 크레이트라
+# 빌드 표면이 늘지 않는다.
 serde_json = "1"
 rayon = "1"
+
+# 손으로 쓴 extern 선언은 컴파일러가 실제 export 와 대조해 주지 못한다.
+# Windows 메타데이터에서 자동 생성된 바인딩을 쓰면 시그니처 불일치가 구조적으로 사라진다.
+[target.'cfg(windows)'.dependencies]
+# 실제로 쓰는 모듈만 켠다. 쓰지 않는 feature 는 빌드 시간과 공격 표면을 함께 늘린다.
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Diagnostics_Debug",
+    # 프로세스 토큰의 상승 여부 조회(결과에 어느 권한으로 찍었는지 남긴다).
+    "Win32_Security",
+    "Win32_System_Threading",
+] }
 
 [profile.release]
 opt-level = 3

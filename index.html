@@ -2,9 +2,13 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <!-- 창 아이콘은 icons/icon.ico 를 쓰지만 WebView 컨텍스트(개발 서버·devtools)에는
+         이쪽이 노출된다. 브랜드 마크(◧)와 같은 도형으로 맞춘다. -->
+    <link rel="icon" type="image/svg+xml" href="/discan.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Discan</title>
+    <!-- OS 테마를 따라간다. CSS 토큰도 같은 기준으로 갈린다. -->
+    <meta name="color-scheme" content="light dark" />
+    <title>Discan — 디스크 공간 분석기</title>
   </head>
 
   <body>

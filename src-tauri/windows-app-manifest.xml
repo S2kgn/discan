@@ -1,0 +1,45 @@
+<!-- Replaces tauri-build's default manifest. Keep the Common-Controls dependency:
+     dropping it silently downgrades system dialogs. Rationale lives in build.rs.
+     Replacing the default manifest also drops trustInfo and compatibility, so both
+     are restored below - a binary that declares no execution level is subject to
+     UAC installer-detection heuristics and compatibility shims, and a disk-wide
+     reader must state on its face that it runs as the invoking user.
+     ASCII only, no XML declaration - this file is embedded verbatim as RT_MANIFEST
+     and anything else makes activation context creation fail (os error 14001). -->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+        type="win32"
+        name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0"
+        processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df"
+        language="*"
+      />
+    </dependentAssembly>
+  </dependency>
+  <!-- Never auto-elevate. The app reports is_elevated in its results; the manifest
+       must state the same intent so the shipped binary is auditable on its own. -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+  <!-- Without supportedOS the OS reports a capped version and applies legacy shims. -->
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 8.1 -->
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}" />
+      <!-- Windows 10 / 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+    </application>
+  </compatibility>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+    </windowsSettings>
+  </application>
+</assembly>

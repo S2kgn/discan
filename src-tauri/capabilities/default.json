@@ -1,11 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "메인 창이 실제로 쓰는 것만 연다. 커스텀 커맨드(invoke)는 별도 permission 이 필요 없고, 프런트가 부르는 Tauri API 는 listen/unlisten, dialog:open, opener:reveal-item-in-dir 뿐이다. core:app·path·resources·window 는 쓰지 않으면서 렌더러에 홈 디렉터리·사용자명 같은 정찰 표면만 늘려 제거했다. updater 는 갱신 여부 '조회'만 연다 — 실제 설치(updater:allow-download-and-install)는 배포 endpoint 와 갱신 UI 가 생기는 시점에 함께 열어야, 그 전까지 렌더러가 임의 시점에 설치 흐름을 띄울 수 없다. `:default` 묶음 대신 개별 permission 을 쓰는 이유는, 다음 Tauri 버전에서 묶음이 확장돼도 권한이 조용히 늘지 않게 하기 위해서다.",
   "windows": ["main"],
   "permissions": [
-    "core:default",
-    "opener:default",
-    "dialog:default"
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "opener:allow-reveal-item-in-dir",
+    "dialog:allow-open",
+    "updater:allow-check"
   ]
 }

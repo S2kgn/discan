@@ -1,4 +1,5 @@
-import { defineConfig } from "vite";
+/// <reference types="vitest/config" />
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 // @ts-expect-error process is a nodejs global
@@ -28,5 +29,36 @@ export default defineConfig(async () => ({
       // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
     },
+  },
+
+  /*
+   * 두 갈래로 나눈다.
+   *
+   * 순수 로직(.test.ts)은 node 환경에서 1초 안에 끝나야 하고, 컴포넌트(.test.tsx)는
+   * 실제로 렌더해 봐야 한다 — 오류 상자가 "[object Object]" 를 그리는 결함은 렌더
+   * 없이는 드러나지 않는 갈래였고, 실제로 그렇게 통과했다.
+   */
+  test: {
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "lib",
+          environment: "node",
+          include: ["src/**/*.test.ts"],
+          // 계약 드리프트 테스트가 src-tauri 의 Rust 원본을 ?raw 로 읽는다.
+          server: { deps: { inline: [/\.rs$/] } },
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "ui",
+          environment: "jsdom",
+          include: ["src/**/*.test.tsx"],
+          setupFiles: ["src/test/setup.ts"],
+        },
+      },
+    ],
   },
 }));

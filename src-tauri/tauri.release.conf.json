@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "windows": {
+      "signCommand": {
+        "cmd": "cmd",
+        "args": [
+          "/C",
+          "signtool sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 /sha1 %DISCAN_SIGN_THUMBPRINT% \"%1\""
+        ]
+      }
+    }
+  }
+}

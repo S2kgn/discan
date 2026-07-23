@@ -3,61 +3,159 @@
   --panel: #171c24;
   --panel-2: #1e242e;
   --border: #2a323e;
+  --border-strong: #3b4757;
+  /* 조작면 전용 테두리.
+     --border 는 '면을 구획하는' 선이라 패널과 1.3:1 로 충분하지만, 보조 버튼·드라이브
+     카드·입력은 테두리 외에 '누를 수 있다'를 알리는 채널이 없다. WCAG 1.4.11 이
+     요구하는 3:1 을 그 선이 직접 채워야 한다(--panel 대비 3.80:1 — 막대 트랙에
+     이미 쓰고 있는 값과 같다). 검증은 color.test.ts 가 한다. */
+  --control-border: #6a7889;
   --text: #e4e8ee;
   --text-dim: #939eae;
   --accent: #4a9df2;
+  --accent-ink: #08121d;
   --danger: #e05263;
-  font-family: "Pretendard", "Segoe UI", system-ui, -apple-system, sans-serif;
-  font-size: 14px;
-  color-scheme: dark;
+  --danger-bg: #2a1418;
+  --danger-border: #5c2530;
+  --warn: #e0b86a;
+  --warn-bg: #241d13;
+  --warn-border: #4a3a1d;
+
+  /* 막대 트랙 전용 토큰. --panel-2 를 트랙으로 쓰면 얹히는 면과 1.1:1 이라
+     '채워진 부분만 허공에 뜬 색 막대'가 되고 비교 기준선이 사라진다.
+     배경색만으로는 3:1 을 못 채우므로 1px inset 보더(--track-line)를 함께 쓴다. */
+  --track: #2a323e;
+  --track-line: #6a7889;
+  /* 고스트(빈 상태 예고)용. opacity 0.72 와 곱해도 배경과 1.5:1 이상으로 남는다. */
+  --skeleton: #4a5666;
+
+  /* 타이포 스케일은 여섯 단계로 고정한다. 0.5px 값과 가변폰트 전용 웨이트는 쓰지 않는다. */
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 21px;
+  --fs-2xl: 28px;
+
+  /* Pretendard 를 번들하지 않으므로 목록에서 뺐다. 실제 렌더는 늘 Segoe UI 였다. */
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: var(--fs-md);
+  color-scheme: light dark;
+}
+
+/* OS 테마를 따른다. 토큰 재정의만으로 끝나므로 비용이 작다. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f4f6f9;
+    --panel: #ffffff;
+    --panel-2: #eef1f5;
+    /* 흰 패널 위 #f4f6f9 배경은 면 대비가 1.06:1 이라, 구획을 알리는 신호가
+       테두리 하나뿐이다. #d8dee7 은 그마저 1.35:1 이라 덩어리 경계가 눈에 잡히지
+       않았다. 한 단계 진하게 하고 아주 옅은 그림자로 면 분리를 보강한다. */
+    --border: #cdd5e0;
+    --border-strong: #b7c1cf;
+    /* 흰 패널 대비 3.58:1. 예전에는 조작면도 --border(1.48:1) 를 써서, 실행 화면의
+       '경로 변경·다시 스캔·내보내기'가 흰 배경 위 거의 무색의 사각형으로 렌더돼
+       클릭 가능한 요소가 아니라 상태 칩으로 읽혔다. */
+    --control-border: #7d8899;
+    --text: #1b2129;
+    --text-dim: #5d6875;
+    /* #1f6fd0 은 --panel-2 위에서 4.37:1 이라 11px 링크·배지('안전', '모두 보기')가
+       AA(4.5:1)에 미달했다. 한 단계 어둡게 잡으면 흰 패널 6.1:1 · --panel-2 5.4:1 로
+       세 지점이 한꺼번에 해결된다(다크 토큰은 이미 충족해 그대로 둔다). */
+    --accent: #1a5fbf;
+    --accent-ink: #ffffff;
+    --danger: #c62f43;
+    --danger-bg: #fdeef0;
+    --danger-border: #f2c2c9;
+    --warn: #8a6316;
+    --warn-bg: #fdf5e3;
+    --warn-border: #e9d5a6;
+    --track: #dde3ea;
+    --track-line: #7a8695;
+    --skeleton: #a4b0c0;
+  }
 }
 
 * {
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
+  /* 스크롤 영역은 결과 패널 하나뿐이다. 창 스크롤바와 이중으로 생기지 않게 막는다. */
+  overflow: hidden;
 }
 
 .app {
+  height: 100%;
   max-width: 1180px;
   margin: 0 auto;
-  padding: 24px 28px 64px;
+  padding: 14px 24px 18px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
+  overflow: hidden;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ---------- header ---------- */
 
 .app-header {
-  padding: 4px 0 2px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 32px;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 9px;
 }
 
 .brand-mark {
-  font-size: 30px;
+  font-size: 18px;
   color: var(--accent);
   line-height: 1;
 }
 
 .brand h1 {
   margin: 0;
-  font-size: 22px;
-  letter-spacing: -0.02em;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
-.tagline {
-  margin: 2px 0 0;
-  font-size: 12px;
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar-note {
+  font-size: var(--fs-xs);
   color: var(--text-dim);
 }
 
@@ -67,16 +165,159 @@ body {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 18px 20px 20px;
+  padding: 16px 18px 18px;
+}
+
+/* 라이트 테마는 면 대비가 1.06:1 이라 테두리만으로는 덩어리가 읽히지 않는다.
+   다크 테마는 밝기 차가 그 몫을 하므로 그림자를 더하지 않는다. */
+@media (prefers-color-scheme: light) {
+  .panel,
+  .stat {
+    box-shadow: 0 1px 2px rgb(16 24 40 / 6%);
+  }
+}
+
+.panel-target {
+  flex: 0 0 auto;
+  /* 드라이브 문자가 많은 PC에서 최소 창 높이(560)를 넘어 스캔 버튼이 잘리던 것을 막는다. */
+  max-height: 52vh;
+  overflow-y: auto;
+}
+
+/* 결과가 나온 뒤의 접힌 형태. 애니메이션 없이 즉시 교체해 레이아웃 점프를 피한다. */
+.panel-target.collapsed {
+  padding: 9px 14px;
+  max-height: none;
+  overflow: visible;
+}
+
+/* 최소 창 폭(820)에서 이 줄의 가용 폭은 약 744px 인데 경로·시각·버튼 셋의 합이
+   그것을 넘는다. wrap 없이 두면 nowrap 인 버튼은 그대로 남고 경로가 말줄임 표시도
+   없이 하드 클리핑되어, 가장 중요한 정보(무엇을 스캔했는가)가 잘렸다는 신호조차
+   없이 먼저 사라졌다. 넘칠 때 내려가는 것은 텍스트가 아니라 버튼 묶음이어야 한다. */
+.target-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--fs-md);
+}
+
+.target-summary-path {
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  flex: 1 1 240px;
+  min-width: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.target-summary-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.target-summary-size {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 여유 공간은 4번 지표 타일이 각주까지 달아 낸다. 이 줄에서는 뺐다(중복 표기). */
+.target-summary-free {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.target-summary-when {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+/* 쿼터 볼륨에서 '여유'와 '내가 쓸 수 있는 공간'이 다르다는 사실. */
+.drive-quota {
+  color: var(--warn);
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.panel-head .panel-title {
+  margin: 0;
 }
 
 .panel-title {
-  margin: 0 0 14px;
-  font-size: 13px;
+  margin: 0 0 12px;
+  font-size: var(--fs-md);
   font-weight: 600;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+.panel-empty {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-md);
+}
+
+/* ---------- results scroll area ---------- */
+
+.results,
+.empty-state {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  /* 스크롤바 폭(9px)을 상시 예약한다.
+     예전에는 padding-right: 4px 이라 스크롤 영역 안의 패널이 밖의 고정 패널보다
+     13px 왼쪽에 놓였고, 결과가 짧아 스크롤바가 사라지면 안쪽 패널이 9px 오른쪽으로
+     뛰어 스캔 대상을 바꿀 때마다 수직 정렬선이 이동했다. */
+  scrollbar-gutter: stable;
+  padding-right: 0;
+}
+
+/* 빈 상태도 같은 스크롤 대역이라 같은 예약을 쓴다(고정 패널과 축이 어긋나지 않게). */
+.empty-state {
+  scrollbar-gutter: stable;
+}
+
+/* 스크롤 대역 '밖'의 고정 패널에 같은 폭을 물려 두 대역의 우측 축을 맞춘다.
+   토스트는 position: fixed 라 이 규칙과 무관하다. */
+.panel-target,
+.progress,
+.error-box {
+  margin-right: 9px;
+}
+
+/* 결과 교체 후 포커스를 여기로 옮긴다(트리 행이 언마운트되며 body 로 떨어지던 것). */
+.results:focus {
+  outline: none;
+}
+
+/* 새 스캔 중에는 이전 결과를 지우지 않고 흐리게 둔다. 레이아웃이 튀지 않아야 비교가 된다.
+   조작 차단은 CSS 가 아니라 inert 속성이 한다(App.tsx) — pointer-events 는 포인터만
+   막아 키보드로는 그대로 실행됐다. 0.4 는 대비 1.9:1 이라 '읽을 수 없음'으로 읽히므로
+   '지금은 옛 값'이 전달될 만큼만 낮춘다. */
+.results.stale {
+  opacity: 0.55;
 }
 
 /* ---------- drives ---------- */
@@ -85,14 +326,14 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
   gap: 10px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .drive-card {
   background: var(--panel-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: 9px;
-  padding: 11px 13px;
+  padding: 10px 12px;
   cursor: pointer;
   text-align: left;
   color: inherit;
@@ -101,12 +342,20 @@ body {
 }
 
 .drive-card:hover:not(:disabled) {
-  border-color: #3b4757;
+  border-color: var(--accent);
 }
 
 .drive-card.selected {
   border-color: var(--accent);
-  background: #1b2735;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.drive-card.warn {
+  border-color: var(--warn-border);
+}
+
+.drive-card.critical {
+  border-color: var(--danger-border);
 }
 
 .drive-card:disabled {
@@ -122,31 +371,66 @@ body {
 }
 
 .drive-label {
-  font-size: 16px;
+  font-size: var(--fs-lg);
   font-weight: 600;
 }
 
-.drive-free {
-  font-size: 11px;
+.drive-usage {
+  font-size: var(--fs-xs);
   color: var(--text-dim);
 }
 
 .drive-bar {
   height: 5px;
-  background: #0d1117;
+  background: var(--track);
+  box-shadow: inset 0 0 0 1px var(--track-line);
   border-radius: 3px;
   overflow: hidden;
 }
 
+/* 스캔이 예정된 실패로 끝나는 드라이브는 어포던스 자체를 주지 않는다. */
+.drive-card.blocked {
+  opacity: 1;
+  border-style: dashed;
+}
+
+.drive-blocked {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.target-blocked {
+  margin: 8px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--warn);
+}
+
+.unit-note {
+  margin: 0 0 10px;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
 .drive-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent), #6fb4ff);
+  background: var(--accent);
+}
+
+/* 여유가 없는 드라이브가 이 앱을 켜게 만든 이유다. 색으로 먼저 말한다. */
+.drive-card.warn .drive-bar-fill {
+  background: var(--warn);
+}
+
+.drive-card.critical .drive-bar-fill {
+  background: var(--danger);
 }
 
 .drive-sub {
   margin-top: 6px;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- target row ---------- */
@@ -158,23 +442,32 @@ body {
 
 .target-input {
   flex: 1;
+  min-width: 0;
   background: var(--panel-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: 8px;
   padding: 9px 12px;
   color: var(--text);
   font-family: "Cascadia Mono", "Consolas", monospace;
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 
-.target-input:focus {
+.target-input:focus-visible {
   outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.reassure {
+  margin: 10px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
 }
 
 .btn {
   background: var(--panel-2);
-  border: 1px solid var(--border);
+  /* 테두리가 유일한 식별 채널인 요소라 면 구획용 --border 로는 3:1 을 못 채운다. */
+  border: 1px solid var(--control-border);
   border-radius: 8px;
   padding: 9px 16px;
   color: var(--text);
@@ -185,8 +478,14 @@ body {
   transition: border-color 0.12s, background 0.12s;
 }
 
+.btn.tiny {
+  padding: 5px 10px;
+  font-size: var(--fs-sm);
+}
+
+/* 기본 테두리를 3:1 로 올린 만큼 호버 신호는 다른 축으로 분리한다. */
 .btn:hover:not(:disabled) {
-  border-color: #3b4757;
+  border-color: var(--accent);
 }
 
 .btn:disabled {
@@ -197,12 +496,8 @@ body {
 .btn.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #08121d;
+  color: var(--accent-ink);
   font-weight: 600;
-}
-
-.btn.primary:hover:not(:disabled) {
-  background: #62aef7;
 }
 
 .btn.danger {
@@ -211,16 +506,99 @@ body {
   color: var(--danger);
 }
 
+.icon-btn {
+  background: none;
+  border: 0;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: var(--fs-md);
+  padding: 2px 6px;
+  min-width: 24px;
+  min-height: 24px;
+  display: inline-grid;
+  place-items: center;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* ---------- progress ---------- */
 
 .progress {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 14px;
-  font-size: 13px;
+  font-size: var(--fs-md);
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
+}
+
+.progress.panel {
+  padding: 12px 16px;
+}
+
+.progress-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.progress-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.progress-clock {
+  white-space: nowrap;
+}
+
+.progress-track {
+  position: relative;
+  height: 4px;
+  margin-top: 6px;
+  background: var(--track);
+  box-shadow: inset 0 0 0 1px var(--track-line);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s linear;
+}
+
+/* 총량을 모르는 경로(폴더 지정)에서는 '멈춤'과 '진행 중'만 구분해 준다. */
+.progress-indeterminate {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 30%;
+  height: 100%;
+  background: var(--accent);
+  animation: slide 1.4s ease-in-out infinite;
+}
+
+@keyframes slide {
+  0% {
+    left: -30%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+.progress-path {
+  margin-top: 5px;
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .progress-spinner {
@@ -233,55 +611,699 @@ body {
   flex-shrink: 0;
 }
 
+.progress-spinner.danger {
+  border-top-color: var(--danger);
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-.error {
-  margin: 12px 0 0;
-  color: var(--danger);
-  font-size: 13px;
+/* 패널 흐름 안에 두면 나타났다 사라지며 아래 콘텐츠를 밀어 레이아웃이 출렁인다. */
+.toast {
+  position: fixed;
+  right: 20px;
+  bottom: 18px;
+  z-index: 20;
+  margin: 0;
+  max-width: 420px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 13px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 22%);
+  font-size: var(--fs-sm);
+  color: var(--text);
 }
 
-.notice {
-  margin: 0;
-  padding: 11px 14px;
-  background: #241d13;
-  border: 1px solid #4a3a1d;
+/* --panel-2 위의 --danger 는 다크 테마에서 4.13:1 로 12px 본문 기준에 미달한다.
+   토큰이 아니라 배경면 선택의 문제라 배경을 --danger-bg 로 바꾼다(4.59:1). */
+.toast.error {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
+
+/* ---------- error / notice ---------- */
+
+.error-box {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
   border-radius: 9px;
-  color: #e0b86a;
-  font-size: 12.5px;
+  color: var(--text);
+  font-size: var(--fs-md);
+}
+
+.error-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--danger);
+  color: var(--accent-ink);
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  display: grid;
+  place-items: center;
+}
+
+.error-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.error-title {
+  margin: 0 0 4px;
+}
+
+/* 문제가 된 경로는 코드만큼 중요한 정보다. details 안에 접어 두지 않는다. */
+.error-detail {
+  margin: 0 0 4px;
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  word-break: break-all;
+}
+
+.error-body summary {
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+
+.error-body code {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  word-break: break-all;
+}
+
+/* 정상 완료된 스캔에서도 늘 뜨던 노란 박스는 경보 피로를 만든다.
+   여기에는 실제 경고(부분 집계·읽기 실패·커버리지 급락)만 남긴다. */
+.notice {
+  padding: 11px 14px;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: 9px;
+  color: var(--warn);
+  font-size: var(--fs-sm);
+}
+
+.notice p {
+  margin: 0 0 4px;
+}
+
+.notice p:last-child {
+  margin-bottom: 0;
+}
+
+.notice-sub {
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+}
+
+/* 색 외에 심각도 채널을 하나 더 준다. */
+.notice-mark {
+  margin-right: 6px;
+}
+
+/* 중립 정보 — 커버리지 요약·제외 규칙·집계 조건. 늘 접근할 수 있되 첫 화면의
+   세로 대역을 점유하지는 않도록 요약 한 줄만 남기고 접는다. */
+.conditions {
+  padding: 2px 4px;
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+}
+
+.conditions > summary {
+  cursor: pointer;
+  color: var(--text-dim);
+}
+
+.conditions-body {
+  padding: 4px 0 0 14px;
+}
+
+.conditions p {
+  margin: 0;
+}
+
+.failed-details {
+  margin-top: 6px;
+}
+
+.failed-details summary {
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+}
+
+.failed-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.failed-list li {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  padding: 2px 0;
+  font-size: var(--fs-xs);
+}
+
+.failed-kind {
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.failed-kind.denied {
+  color: var(--danger);
+}
+
+/* 사유를 색으로도 갈라 둔다 — 배지 문구가 같은 회색이면 20줄 목록에서 '권한'과
+   '사용 중'이 한 덩어리로 읽히고, 사유별 처방을 붙인 의미가 사라진다. */
+.failed-kind.locked,
+.failed-kind.notReady {
+  color: var(--warn);
+}
+
+.failed-path {
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  color: var(--text-dim);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.failed-foot {
+  margin: 6px 0 0;
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+}
+
+/* 정상적인 재진입 방어(이미 스캔 중)까지 빨갛게 띄우면 겁을 준다. */
+.error-box.benign {
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+}
+
+.error-box.benign .error-icon {
+  background: var(--warn);
 }
 
 /* ---------- stats ---------- */
 
+/* 총 용량 카드만 각주·델타를 갖는다. 네 칸을 균등하게 두면 그 높이에 나머지
+   세 카드가 stretch 되어 100px 가까운 공백이 생긴다. 폭을 줘서 각주를 가로로
+   흡수시킨다. */
+/* KPI 행은 화면에서 가장 규칙적이어야 할 밴드다. align-items: start 로 두면 각주
+   길이에 따라 한 행 안에 서로 다른 하단선이 셋 생겨 '읽는 순서가 정해져 있지 않다'는
+   신호가 된다. 타일 안에서 값·라벨과 각주를 행으로 분리하면, stretch 로 되돌려도
+   예전의 100px 공백이 생기지 않는다(각주가 마지막 행 바닥에 붙는다). */
 .stat-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: 1.6fr 1fr 1fr 1fr;
   gap: 12px;
+  align-items: stretch;
 }
 
 .stat {
+  position: relative;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 11px;
-  padding: 15px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  padding: 13px 16px;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  align-content: start;
+  gap: 3px;
 }
 
-.stat-value {
-  font-size: 21px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
+/* 각주·델타는 마지막 행을 공유하고 바닥에 붙는다. */
+.stat .stat-foot,
+.stat .stat-delta {
+  align-self: end;
+}
+
+/* 내보내기는 결과 전체에 대한 조작이다. 지표 타일 밖, 결과 영역 머리 행에 둔다. */
+.results-head {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 단위가 없는 카드까지 30px 칸을 예약하면 숫자가 우측 패딩선에 닿지 않고 떠 보인다. */
+.stat-value.no-unit {
+  grid-template-columns: auto;
+}
+
+.stat-foot {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* 숫자와 단위를 다른 칸에 두어야 자릿수가 세로로 맞는다. */
+.stat-value,
+.cat-size,
+.tree-size,
+.file-size {
+  display: grid;
+  grid-template-columns: 1fr 30px;
+  gap: 4px;
   font-variant-numeric: tabular-nums;
 }
 
+/* 지표 카드는 카드마다 자릿수·단위가 달라 카드 간 자릿수 정렬의 이득이 없다.
+   값을 우측, 라벨을 좌측에 두면 250px 카드에서 둘이 대각선으로 벌어져 근접성이
+   깨지므로 같은 축(좌측 정렬, 값 위 라벨 아래)에 붙인다. */
+.stat-value {
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  align-items: baseline;
+  grid-template-columns: auto auto;
+  justify-content: start;
+}
+
+.stat-value .num {
+  text-align: left;
+}
+
+/* 총 용량은 이 화면의 1차 지표다. 정의만 있고 쓰이지 않던 단계를 여기에 쓴다. */
+.stat-row .stat:first-child .stat-value {
+  font-size: var(--fs-2xl);
+}
+
+.cat-size .num,
+.tree-size .num,
+.file-size .num {
+  text-align: right;
+}
+
+.stat-value .unit,
+.cat-size .unit,
+.tree-size .unit,
+.file-size .unit {
+  text-align: left;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
 .stat-label {
-  font-size: 11.5px;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+/* 내보내기는 결과 데이터에 대한 조작이다. 헤더가 아니라 결과 옆에 둔다. */
+.export {
+  position: relative;
+}
+
+.export-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 10;
+  width: 260px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 25%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.export-item {
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 9px;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.export-item:hover:not(:disabled) {
+  background: var(--panel-2);
+}
+
+.export-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* 체크박스는 메뉴 항목이 아니다. 구분선으로 설정 영역임을 시각적으로 가른다. */
+.export-settings {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.export-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 9px 0;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.export-note {
+  margin: 4px 9px 4px;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* 정리한 보람이 눈에 보여야 다음 정리를 한다. 다만 '늘었다'는 나쁜 소식이므로
+   같은 강조색을 쓰면 정반대의 행동을 유도하는 두 문장이 시각적으로 같아진다. */
+.stat-delta {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+.stat-delta.decrease {
+  color: var(--accent);
+}
+
+.stat-delta.increase {
+  color: var(--warn);
+}
+
+/* ---------- cleanup tips ---------- */
+
+/* auto-fill 은 카드가 둘일 때 세 번째 칸을 빈 채로 남긴다. auto-fit + 상한으로 둔다. */
+.tip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 340px));
+  justify-content: start;
+  gap: 10px;
+}
+
+/* 카드가 한둘이면 340px 오른쪽으로 700px 가까운 공백이 남는다 — 화면에서 가장
+   중요한 CTA 패널이 가장 성긴 영역이 되지 않도록 폭을 늘려 정보를 채운다. */
+.tip-grid.sparse {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+/* 후보 합계 — 이 패널이 답해야 할 질문의 첫 조각. */
+.tip-goal {
+  margin: 0 0 4px;
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+
+/* 두 도달점(안전만 정리 / 전부 정리). 값의 해석을 바꾸는 단서라 11px 회색이 아니라
+   12px 본문색으로 값 바로 아래 붙인다. */
+.tip-goal-free {
+  margin: 0 0 6px;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 합계의 해석 조건은 합계 옆에 상시 노출한다 — 이 줄이 없으면 하한값이
+   확정 수치로 읽힌다. 면책 나머지는 ⓘ 팝오버에 남긴다. */
+.tip-goal-note {
+  margin: -4px 0 8px;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+/* title 속성은 키보드 포커스만으로는 열리지 않는다. 눌러서 여는 버튼으로 바꿨다. */
+.panel-info {
+  margin-left: 6px;
+  padding: 0 2px;
+  background: none;
+  border: 0;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  /* 주변에 여백이 충분해 직접 키워도 레이아웃에 영향이 없다(2.5.8). */
+  min-width: 24px;
+  min-height: 24px;
+  display: inline-grid;
+  place-items: center;
+}
+
+.panel-info:hover,
+.panel-info:focus-visible {
+  color: var(--text);
+}
+
+.tip-note {
+  margin: 0 0 8px;
+  padding: 7px 10px;
+  border-left: 3px solid var(--border-strong);
+  background: var(--panel-2);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+.tip-paths-head {
+  margin: 5px 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+.tip-more {
+  margin-top: 6px;
+}
+
+.tip-more-btn,
+.link-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--fs-xs);
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-btn {
+  margin-left: 6px;
+}
+
+.tip-paths {
+  list-style: none;
+  margin: 5px 0 4px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 순위 목록에 순위의 근거가 없으면 다섯 곳을 차례로 열어 보는 수밖에 없다.
+   경로 좌측·용량 우측으로, 같은 패널의 다른 목록과 같은 축을 쓴다. */
+.tip-paths li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.tip-path-size {
+  display: grid;
+  grid-template-columns: 1fr 30px;
+  gap: 4px;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.tip-path-size .num {
+  text-align: right;
+}
+
+.tip-path-size .unit {
+  text-align: left;
+  color: var(--text-dim);
+}
+
+/* 규칙 이름이 아니라 판별에 쓰이는 조상이 목록에서도 먼저 읽혀야 한다. */
+.tip-path-label {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: var(--text);
+  margin-right: 6px;
+}
+
+.tip-path-rest {
+  color: var(--text-dim);
+}
+
+.tip-path-btn {
+  display: block;
+  width: 100%;
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  color: var(--text-dim);
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: var(--fs-xs);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tip-path-btn:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+/* 1위 분야의 주의 문구는 배지 툴팁이 아니라 목록 위에 보이는 한 줄이어야 한다. */
+.axis-warn {
+  margin: 0 0 8px;
+  padding: 7px 10px;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: 7px;
+  color: var(--warn);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+.axis-warn .link-btn {
+  color: var(--warn);
+}
+
+/* CTA 를 카드 하단에 고정해야 힌트 길이가 달라도 스캔라인이 흔들리지 않는다. */
+.tip-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 9px;
+  padding: 11px 13px;
+}
+
+.tip-card.caution {
+  border-left-color: var(--warn);
+}
+
+.tip-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.tip-title {
+  font-weight: 600;
+}
+
+/* 등급을 좌측 3px 색선 하나에 싣지 않는다(WCAG 1.4.1, 그리고 안전 설계). */
+.tip-risk {
+  padding: 1px 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.tip-risk.caution {
+  border-color: var(--warn-border);
+  color: var(--warn);
+}
+
+.tip-risk.safe {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.tip-size {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tip-approx {
+  margin-right: 4px;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.tip-hint {
+  margin: 6px 0 10px;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+}
+
+.tip-foot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.tip-where {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.tip-where-label {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+.tip-base {
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 앞을 자른 경로를 CSS 가 뒤에서 또 자르지 않도록, 여기서는 두 줄까지 허용한다. */
+.tip-path {
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+}
+
+.tip-note {
+  margin: 10px 0 0;
+  font-size: var(--fs-sm);
   color: var(--text-dim);
 }
 
@@ -289,173 +1311,773 @@ body {
 
 .stacked-bar {
   display: flex;
-  height: 13px;
+  height: 18px;
   border-radius: 7px;
   overflow: hidden;
-  background: var(--panel-2);
-  margin-bottom: 16px;
+  background: var(--track);
+  box-shadow: inset 0 0 0 1px var(--track-line);
+  margin-bottom: 14px;
 }
 
+/* 색만이 유일한 구분 채널이 되지 않도록 세그먼트 사이에 배경색 선을 넣는다. */
 .stacked-seg {
   height: 100%;
+  min-width: 2px;
+  box-shadow: inset -1px 0 0 var(--panel);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
 }
 
+/* 잔여 합산 세그먼트. '기타'와 같은 색이면 두 블록이 하나로 보인다. */
+.stacked-seg.residual {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--border-strong) 0 4px,
+    var(--panel-2) 4px 8px
+  );
+}
+
+.seg-label {
+  padding: 0 6px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 세그먼티드 컨트롤. 세 버튼을 한 테두리 안에 붙여 '선택 하나'라는 형태를 준다. */
+.axis-tabs {
+  display: flex;
+  gap: 0;
+}
+
+.axis-tabs .axis-tab {
+  border-radius: 0;
+  margin-left: -1px;
+}
+
+.axis-tabs .axis-tab:first-child {
+  border-radius: 8px 0 0 8px;
+  margin-left: 0;
+}
+
+.axis-tabs .axis-tab:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+/* 선택 상태는 채움이 아니라 밑선·테두리로 낸다. accent 채움은 '스캔 시작'이라는
+   단 하나의 주 행동에 배정된 토큰이라, 상태 표시에 쓰면 결과 화면에서 유일하게
+   채워진 버튼이 아무 일도 하지 않는 버튼이 된다. */
+.axis-tabs .axis-tab[aria-pressed="true"] {
+  background: var(--panel-2);
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--accent);
+  z-index: 1;
+}
+
+.axis-note {
+  margin: 0 0 10px;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+/* 2열 분기를 걷어냈다.
+   ① 머리글(.cat-head)은 ul 바깥의 단일 div 라 2열에서는 우측 열 위에만 놓였고,
+      정렬 1위가 들어가는 좌측 열의 세 수치에는 머리글이 아예 없었다.
+   ② 행의 최소 폭은 14+96+52+108+74+갭 = 약 380px 인데 2열 분기는 뷰포트 860px
+      부터 켜져, minWidth(820) 창에서 패널 내부 가용 폭(약 740px)이 2×380+24 를
+      채우지 못해 우측 열이 잘리고 .results 의 overflow-x:hidden 이 그것을 감췄다.
+   머리글 없는 수치 열을 남기느니 1열로 되돌리는 편이 낫다(열 폭도 함께 넉넉해진다). */
 .cat-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 2px 24px;
+  grid-template-columns: 1fr;
+  gap: 2px;
 }
 
-.cat-row {
+.cat-row,
+.cat-head {
   display: grid;
-  grid-template-columns: 12px minmax(96px, 1fr) auto auto auto;
+  grid-template-columns: 14px minmax(150px, 1fr) 52px 108px 74px;
   align-items: center;
   gap: 9px;
-  padding: 5px 0;
-  font-size: 13px;
+  padding: 4px 0;
+  font-size: var(--fs-md);
   font-variant-numeric: tabular-nums;
 }
 
+/* 트리 머리글과 같은 형식. 세 수치 목록의 열 의미를 같은 방식으로 낸다. */
+.cat-head,
+.file-head {
+  margin-bottom: 2px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* `display: block` 으로 덮으면 본문의 `1fr 30px` 그리드가 무효화되어 '용량' 글자가
+   셀 우측 끝에 붙고, 숫자 축과 34px(단위칸 30 + 갭 4) 어긋난다. 트리 머리글에서
+   이미 고친 방식대로 그리드를 유지하고 라벨을 첫 칸(.num)에 넣는다. */
+.cat-head .cat-files,
+.cat-head .cat-pct,
+.file-head .file-pct {
+  display: block;
+  text-align: right;
+  font-weight: 400;
+}
+
+.cat-head .cat-size,
+.file-head .file-size {
+  font-weight: 400;
+}
+
 .cat-dot {
-  width: 9px;
-  height: 9px;
+  width: 11px;
+  height: 11px;
   border-radius: 2px;
 }
 
+/* 이름 옆에 배지·교차 링크가 붙으므로 이름만 줄어들게 둔다. */
 .cat-label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+/* 행에서 가장 중요한 식별자는 분야 이름이다. 예전에는 이름만 축소 대상이라
+   '캐시·빌드 산…'으로 잘리면서 그 옆의 보조 링크는 온전히 남았다 — 위계가 뒤집힌
+   상태다. 이름에 최소 폭을 주고, 폭이 모자라면 링크가 먼저 접히게 한다. */
+.cat-name {
+  flex: 1 1 auto;
+  min-width: 8ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* opacity 감쇠는 --accent 에 곱해져 흰 패널 위 실효 대비를 3.2:1 로 떨어뜨렸다
+   (11px 텍스트는 굵기와 무관하게 4.5:1 이 요구된다). 시각적 무게는 색이 아니라
+   밑줄로 조절하고, 상시 밑줄 대신 호버·포커스에서만 강조한다. */
+.cat-row .link-btn {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-decoration: none;
+}
+
+.cat-row .link-btn:hover,
+.cat-row .link-btn:focus-visible {
+  text-decoration: underline;
+}
+
+.cat-warn {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border: 1px solid var(--warn-border);
+  border-radius: 4px;
+  color: var(--warn);
+  font-size: var(--fs-xs);
+  cursor: help;
+}
+
+.cat-pct {
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.cat-size {
+  font-weight: 600;
+}
+
+.cat-files {
+  color: var(--text-dim);
+  text-align: right;
+  font-size: var(--fs-sm);
+}
+
+/* ---------- largest files ---------- */
+
+.file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.file-row,
+.file-head {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(0, 1.2fr) 52px 108px 56px;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: var(--fs-md);
+  font-variant-numeric: tabular-nums;
+}
+
+.file-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.cat-pct {
+/* 가운데 생략(middlePath)으로 이미 줄인 값이라 여기서 또 자르지 않는다. */
+.file-path {
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: var(--fs-xs);
   color: var(--text-dim);
-  min-width: 46px;
-  text-align: right;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
-.cat-size {
-  min-width: 76px;
-  text-align: right;
-  font-weight: 550;
+/* 목록 맨 위에 오는 pagefile.sys 가 '제일 큰 파일'로만 읽히면 안 된다. */
+.file-system-badge {
+  padding: 1px 5px;
+  border: 1px solid var(--warn-border);
+  border-radius: 4px;
+  color: var(--warn);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  cursor: help;
 }
 
-.cat-files {
-  color: var(--text-dim);
-  min-width: 74px;
+.file-note {
+  grid-column: 1 / -1;
+  margin-top: -2px;
+  font-size: var(--fs-xs);
+  color: var(--warn);
+}
+
+.file-row.system {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.file-pct {
   text-align: right;
-  font-size: 12px;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+
+.file-size {
+  font-weight: 600;
+}
+
+.file-actions,
+.tree-actions {
+  display: flex;
+  /* 24px 원 기준 간격 예외를 충족하려면 2px 로는 부족하다. */
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.row-btn {
+  position: relative;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  line-height: 1;
+  padding: 3px 5px;
+}
+
+/* 트리 행 높이가 이미 25px 이라 버튼 자체를 키우면 행이 늘어난다. 시각 크기는 그대로
+   두고 히트 영역만 넓혀 WCAG 2.2 의 2.5.8(24×24) 을 채운다. */
+.row-btn::after {
+  content: "";
+  position: absolute;
+  inset: -4px -2px;
+}
+
+.row-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
 }
 
 /* ---------- tree ---------- */
 
+.panel-tree {
+  display: flex;
+  flex-direction: column;
+}
+
+.tree-tools {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.tree-search {
+  background: var(--panel-2);
+  border: 1px solid var(--control-border);
+  border-radius: 7px;
+  padding: 5px 9px;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  width: 200px;
+}
+
 .tree-head,
 .tree-row {
   display: grid;
-  grid-template-columns: 16px minmax(140px, 1fr) 140px 54px 82px 74px;
+  grid-template-columns: 16px minmax(140px, 1fr) 120px 56px 92px 66px 52px;
   align-items: center;
   gap: 8px;
   font-variant-numeric: tabular-nums;
 }
 
+/* 머리글과 본문을 한 treegrid 로 묶는 껍데기. 레이아웃은 자식이 그대로 맡는다. */
+.tree-grid {
+  display: block;
+}
+
+/* 정렬 버튼이 columnheader 셀 안으로 들어가면서 그리드 아이템이 셀로 바뀌었다.
+   버튼이 셀 폭을 채워야 라벨 위치가 예전과 같다. */
+.tree-name-head {
+  min-width: 0;
+}
+
+.tree-name-head .tree-sort {
+  width: 100%;
+}
+
 .tree-head {
-  padding: 0 10px 8px;
-  font-size: 11px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel);
+  padding: 0 6px 7px;
+  font-size: var(--fs-xs);
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   border-bottom: 1px solid var(--border);
 }
 
-.tree-head .tree-pct,
-.tree-head .tree-size,
-.tree-head .tree-files {
+.tree-sort {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.tree-sort.active {
+  color: var(--text);
+}
+
+.tree-sort-mark {
+  margin-left: 3px;
+}
+
+/* 머리글도 본문과 같은 `1fr 30px` 그리드를 쓴다. 예전에는 머리글만 셀 우측 끝에
+   붙어 '용량'과 그 아래 숫자열의 오른쪽 축이 34px 어긋나 있었다. */
+.tree-head .tree-size .tree-size-btn {
+  text-align: right;
+  width: 100%;
+}
+
+.tree-head .tree-files,
+.tree-head .tree-pct {
+  display: block;
   text-align: right;
 }
 
+.tree-head .tree-files .tree-files-btn {
+  width: 100%;
+  text-align: right;
+}
+
+/* 머리글의 막대 칸은 트랙을 그리지 않는다(값이 없는 자리다). */
+.tree-bar-wrap.head {
+  background: none;
+  box-shadow: none;
+}
+
 .tree-body {
-  max-height: 560px;
-  overflow-y: auto;
   margin-top: 4px;
+  /* 깊은 트리에서 그리드가 넘쳐도 패널 안에 가둔다. */
+  overflow-x: auto;
 }
 
 .tree-row {
-  padding: 5px 10px 5px 0;
+  padding: 4px 6px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 
 .tree-row.clickable {
   cursor: pointer;
 }
 
-.tree-row.clickable:hover {
+.tree-row:hover {
   background: var(--panel-2);
+}
+
+.tree-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.tree-row.file .tree-name {
+  color: var(--text-dim);
 }
 
 .tree-row.muted {
   color: var(--text-dim);
-  font-size: 12px;
-  font-style: italic;
+  font-size: var(--fs-sm);
 }
 
-.tree-caret {
+/* 깊이 제한으로 잘린 가지에는 큰 폴더가 숨어 있을 수 있다. 눈에 띄게 둔다. */
+.tree-row.muted.warn {
+  color: var(--warn);
+}
+
+/* 완전히 감추면 이 앱에서 가장 중요한 동작('여기를 탐색기로 열기')이
+   마우스를 얹어야만 발견된다. 존재는 늘 보이게 두고 강조만 호버로 올린다.
+   0.35 는 라이트 테마 실효색이 약 #c6cacf 로 흰 패널 대비 1.7:1 이라 비텍스트
+   대비 3:1(WCAG 1.4.11)에 미달했다. 0.65 로 올리고 두 목록에 같은 값을 준다 —
+   같은 아이콘 쌍이 목록마다 다른 진하기면 조작 가능성이 달라 보인다. */
+.tree-actions,
+.file-actions {
+  opacity: 0.65;
+}
+
+.tree-row:hover .tree-actions,
+.tree-row:focus-within .tree-actions,
+.tree-row:focus-visible .tree-actions,
+.file-row:hover .file-actions,
+.file-row:focus-within .file-actions {
+  opacity: 1;
+}
+
+/* 머리글 행에는 아이콘이 없다. 흐림 규칙이 적용될 이유도 없다. */
+.file-head .file-actions {
+  opacity: 1;
+}
+
+/* 하위 집계가 끝나지 못한 노드. 표시 용량이 하한값임을 행에서 바로 알린다. */
+.tree-incomplete {
+  margin-left: 5px;
+  color: var(--warn);
+  font-size: var(--fs-xs);
+  cursor: help;
+}
+
+.tree-icon {
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   text-align: center;
 }
 
 .tree-name {
+  display: flex;
+  align-items: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* 들여쓰기를 이름 칸 안쪽에서 흡수해 그리드 폭을 늘리지 않는다. */
+.tree-indent {
+  flex-shrink: 0;
+}
+
 .tree-bar-wrap {
-  height: 6px;
-  background: #0d1117;
+  height: 7px;
+  background: var(--track);
+  box-shadow: inset 0 0 0 1px var(--track-line);
   border-radius: 3px;
   overflow: hidden;
 }
 
+/* opacity 0.8 을 곱하면 자기 트랙(--track) 대비가 2.9:1 로 떨어져 1.4.11(3:1)에
+   미달한다. 막대는 비텍스트 정보 전달 요소이므로 감쇠 없이 그대로 칠한다. */
 .tree-bar {
   display: block;
   height: 100%;
   background: var(--accent);
-  opacity: 0.75;
 }
 
 .tree-pct {
   text-align: right;
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .tree-size {
-  text-align: right;
-  font-weight: 550;
+  font-weight: 600;
 }
 
 .tree-files {
   text-align: right;
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
+}
+
+.tree-empty {
+  padding: 14px 6px;
+  color: var(--text-dim);
+}
+
+.tree-hint {
+  margin: 8px 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+/* 좁은 창에서는 막대 열을 접어 이름 폭을 확보한다. */
+@media (max-width: 900px) {
+  .tree-head,
+  .tree-row {
+    grid-template-columns: 16px minmax(120px, 1fr) 0 52px 92px 60px 52px;
+  }
+
+  .tree-bar-wrap {
+    display: none;
+  }
+
+  .tree-search {
+    width: 130px;
+  }
+
+  /* minWidth 820px 창에서 카드 하나당 내부 폭이 152px 이 되면 각주가 5~6줄로
+     늘어나 지표 행 하나가 화면의 4분의 1을 넘는다. 두 칸으로 접고 각주는 뺀다.
+     고스트도 같은 규칙을 써야 빈 상태의 레이아웃 예고가 결과와 어긋나지 않는다. */
+  .stat-row,
+  .ghost-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* 각주를 지우면 '이 숫자가 논리 크기 합계인가'라는 판정이 통째로 사라진다 —
+     장식이 아니라 값의 해석 조건이다. 대신 152px 카드에서 5~6줄로 늘어나던 원래
+     문제만 두 줄로 잘라 해결하고, 값과 무관한 4번 타일 각주만 접는다. */
+  .stat-foot {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .stat-row .stat:last-child .stat-foot {
+    display: none;
+  }
+}
+
+/* OS 의 '애니메이션 표시' 해제를 무시하면 C: 전체 스캔에서 1~3분간 계속 움직인다.
+   비결정 막대는 정지 대신 점선 패턴으로 바꿔 '진행 중'이라는 상태 표현은 남긴다. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .progress-indeterminate {
+    width: 100%;
+    background: repeating-linear-gradient(
+      90deg,
+      var(--accent) 0 8px,
+      transparent 8px 16px
+    );
+  }
+}
+
+/* ---------- empty state ---------- */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* 0.25 를 곱하면 실효 대비가 1.01:1 — 레이아웃 예고가 그냥 여백으로 보인다.
+   전용 토큰(--skeleton)과 0.72 로 올려 '무엇이 나올지'가 실제로 읽히게 한다. */
+.ghost {
+  opacity: 0.72;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: none;
+}
+
+/* 빈 상태의 레이아웃 예고는 결과와 같은 그리드여야 한다. */
+.ghost-stats {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr 1fr;
+  gap: 12px;
+}
+
+.ghost-stat {
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 13px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ghost-value {
+  height: 18px;
+  width: 60%;
+  background: var(--skeleton);
+  border-radius: 4px;
+}
+
+.ghost-label {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+.ghost-bar {
+  display: flex;
+  height: 18px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--track);
+}
+
+.ghost-bar span {
+  height: 100%;
+  background: var(--skeleton);
+  box-shadow: inset -1px 0 0 var(--panel);
+}
+
+.ghost-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.ghost-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 160px;
+  gap: 10px;
+  align-items: center;
+}
+
+.ghost-name {
+  height: 9px;
+  background: var(--skeleton);
+  border-radius: 3px;
+}
+
+.ghost-track {
+  height: 7px;
+  background: var(--track);
+  box-shadow: inset 0 0 0 1px var(--track-line);
+  border-radius: 3px;
+  overflow: hidden;
+  display: block;
+}
+
+.ghost-track span {
+  display: block;
+  height: 100%;
+  background: var(--skeleton);
+}
+
+.empty-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.empty-title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+
+.empty-sub {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-md);
+}
+
+.recent {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.recent-label {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.chip {
+  background: var(--panel-2);
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  padding: 4px 11px;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--accent);
 }
 
 /* ---------- scrollbar ---------- */
 
+.results::-webkit-scrollbar,
+.empty-state::-webkit-scrollbar,
 .tree-body::-webkit-scrollbar {
   width: 9px;
+  height: 9px;
 }
 
+.results::-webkit-scrollbar-thumb,
+.empty-state::-webkit-scrollbar-thumb,
 .tree-body::-webkit-scrollbar-thumb {
-  background: #333d4b;
+  background: var(--border-strong);
   border-radius: 5px;
 }
 
+.results::-webkit-scrollbar-track,
+.empty-state::-webkit-scrollbar-track,
 .tree-body::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* 표시 경로가 원본과 다른 행. 실패가 예정된 열기·복사 버튼 대신 이유를 남긴다. */
+.row-note {
+  color: var(--warn);
+  font-size: var(--fs-sm);
+  line-height: 1;
+  min-width: 24px;
+  min-height: 24px;
+  display: inline-grid;
+  place-items: center;
+  cursor: help;
 }
