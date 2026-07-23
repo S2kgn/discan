@@ -1,0 +1,13 @@
+# 셸 스크립트에 CRLF가 들어가면 Git Bash가 `\r`을 명령 일부로 읽어
+# "command not found"로 죽는다. 훅은 반드시 LF로 고정한다.
+*.sh text eol=lf
+.githooks/** text eol=lf
+
+# YAML은 도구에 따라 CR에 민감하다.
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# 바이너리는 변환 대상이 아니다.
+*.png binary
+*.ico binary
+*.icns binary

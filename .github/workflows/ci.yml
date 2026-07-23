@@ -1,0 +1,63 @@
+name: CI
+
+# 검증 자산이 있어도 실행되지 않으면 없는 것과 같다.
+# 푸시와 PR 양쪽에서 같은 검사를 돌려, 로컬 훅을 건너뛴 커밋도 여기서 걸리게 한다.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    # 대상 플랫폼이 Windows 하나뿐이다. 리눅스에서 도는 검사는
+    # Win32 FFI 경로를 한 줄도 지나가지 않으므로 의미가 없다.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust 툴체인
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Node 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Cargo 캐시
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: 서식 검사
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Rust 테스트
+        working-directory: src-tauri
+        run: cargo test --lib
+
+      # 아래 두 스크립트는 프런트엔드 검증 인프라가 갖춰지는 중이라
+      # --if-present 로 둔다. 스크립트가 생기는 순간 자동으로 검사에 편입된다.
+      - name: 타입 검사
+        run: npm run typecheck --if-present
+
+      - name: 프런트엔드 테스트
+        run: npm run test --if-present
+
+      - name: 프런트엔드 빌드
+        run: npm run build

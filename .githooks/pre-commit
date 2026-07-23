@@ -1,0 +1,39 @@
+#!/bin/sh
+# CI와 같은 검사를 커밋 전에 로컬에서 돌린다.
+# 활성화: git config core.hooksPath .githooks
+#
+# CI가 있는데도 이 훅을 두는 이유는, 원격에 올라간 뒤에야 깨진 걸 아는 것과
+# 커밋 전에 아는 것의 차이가 크기 때문이다. 느리면 SKIP_HOOK=1 로 건너뛸 수 있으나,
+# 건너뛴 커밋은 CI에서 그대로 걸린다.
+
+set -e
+
+if [ "$SKIP_HOOK" = "1" ]; then
+  echo "pre-commit: SKIP_HOOK=1 — 검사를 건너뜁니다. CI에서 다시 검사됩니다."
+  exit 0
+fi
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+# cargo가 PATH에 없는 셸에서 커밋하는 경우가 있다.
+if ! command -v cargo >/dev/null 2>&1; then
+  export PATH="$HOME/.cargo/bin:$PATH"
+fi
+
+echo "pre-commit: cargo fmt --check"
+(cd src-tauri && cargo fmt --all -- --check)
+
+echo "pre-commit: cargo clippy"
+(cd src-tauri && cargo clippy --all-targets -- -D warnings)
+
+echo "pre-commit: cargo test"
+(cd src-tauri && cargo test --lib)
+
+echo "pre-commit: npm typecheck"
+npm run typecheck --if-present
+
+echo "pre-commit: npm test"
+npm run test --if-present
+
+echo "pre-commit: 전부 통과"
