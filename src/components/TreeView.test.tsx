@@ -256,8 +256,8 @@ describe("생략 행", () => {
       />,
     );
 
-    expect(screen.getByText(/표시 한도로 4,990개/)).toBeInTheDocument();
-    expect(screen.getByText(/용량이 작아 280개/)).toBeInTheDocument();
+    expect(screen.getByText(/표시 한도로 생략한 4,990개/)).toBeInTheDocument();
+    expect(screen.getByText(/개별 용량이 작아 생략한 280개/)).toBeInTheDocument();
     // 부모 용량과 보이는 자식 합의 차액이 설명되지 않은 채 남으면 안 된다.
     expect(screen.getByText(/이 폴더에서 생략된 합계/)).toBeInTheDocument();
   });

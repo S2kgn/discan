@@ -17,6 +17,7 @@ import {
 } from "./types";
 import { cleanupTips } from "./lib/cleanup";
 import { collectFileNodes } from "./lib/tree";
+import { applyFolderExclusions } from "./lib/exclude";
 import {
   ExportOptions,
   buildCategoryCsv,
@@ -120,6 +121,9 @@ function App() {
   const [exportOpen, setExportOpen] = useState(false);
   const [exportSerial, setExportSerial] = useState(false);
   const [exportAnonymize, setExportAnonymize] = useState(false);
+  // 용량 계산에서 뺀 폴더·파일 경로와 분야 키. 새 스캔이 오면 비운다(아래 useEffect).
+  const [excludedPaths, setExcludedPaths] = useState<Set<string>>(() => new Set());
+  const [excludedCats, setExcludedCats] = useState<Set<string>>(() => new Set());
 
   const toastTimerRef = useRef<number | null>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -327,10 +331,16 @@ function App() {
     scannedDrive !== null && scannedDrive.path.toUpperCase() === scannedPath.toUpperCase();
   const targetBlocked = selectedDrive ? driveBlockedReason(selectedDrive) : null;
 
-  // 드라이브 루트를 스캔할 때만 진행률을 낼 수 있다(사용량을 이미 알고 있으므로).
-  const driveUsed = selectedDrive && selectedDrive.total > 0 ? selectedDrive.total - selectedDrive.free : 0;
-  const scanPercent =
-    driveUsed > 0 && progress ? Math.min(99, (progress.bytes / driveUsed) * 100) : null;
+  /*
+   * 진행률 퍼센트는 내지 않는다.
+   *
+   * 예전에는 `min(99, 스캔한 바이트 / 드라이브 사용량)` 으로 퍼센트를 냈는데, 두 경우
+   * 모두 거짓말이 됐다 — 하위 폴더를 스캔하면 분모(드라이브 전체)가 과대해 영영 안
+   * 차고, 드라이브 전체를 스캔하면 큰 파일 몇 개에 99% 상한까지 순식간에 올라간 뒤
+   * 남은 수만 개의 작은 파일과 마무리(가지치기·집계)가 도는 내내 99%에 멈춰 있었다.
+   * '거의 다 됐다'는 신호를 준 채로 한참 기다리게 하는 것이 이 표시의 결함이었다.
+   * 총량을 미리 알 방법이 없으므로 정직한 표시는 무한 진행 막대 + 실측 카운트다.
+   */
 
   const tips = useMemo(
     () =>
@@ -378,6 +388,36 @@ function App() {
     // 검색어만 채우고 화면이 그대로면 어디로 갔는지 알 수 없다.
     document.querySelector(".panel-tree")?.scrollIntoView({ block: "start" });
   }, []);
+
+  // 새 스캔 결과가 오면 제외 상태를 비운다 — 이전 스캔의 경로·분야는 의미가 없다.
+  useEffect(() => {
+    setExcludedPaths(new Set());
+    setExcludedCats(new Set());
+  }, [result]);
+
+  const toggleExcludePath = useCallback((path: string) => {
+    setExcludedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+  const restoreAllPaths = useCallback(() => setExcludedPaths(new Set()), []);
+  const toggleExcludeCat = useCallback((key: string) => {
+    setExcludedCats((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  /** 제외분을 뺀 트리와 그 합계. 폴더 제외는 트리·총계에만 반영한다(분야 제외는 별도 축). */
+  const folderExcl = useMemo(
+    () => (result ? applyFolderExclusions(result.root, excludedPaths) : null),
+    [result, excludedPaths],
+  );
 
   const linkLine = result ? describeSkippedLinks(result) : null;
   const cloudLine = result ? describeSkippedCloud(result) : null;
@@ -752,16 +792,16 @@ function App() {
               </span>
               <span className="progress-clock">
                 {formatClock(elapsed)}
-                {scanPercent !== null
-                  ? ` · 약 ${Math.round(scanPercent)}%`
-                  : " · 폴더 스캔은 보통 몇 초~수 분입니다"}
+                {/* 남은 시간을 아는 척하지 않되, 기대치는 미리 준다 — '거의 다 됐다'는
+                    가짜 신호 없이도 '한참 걸리는 게 정상'임을 알리는 것이 목적이다. */}
+                {" · 큰 드라이브는 1~3분 걸릴 수 있습니다"}
               </span>
             </div>
+            {/* 총량을 모르므로 채움 막대로 진척을 흉내 내지 않는다. 무한 막대가 도는
+                동안 위의 파일·용량 카운트가 실제 진행을 보여 준다(마무리 단계에서 그
+                카운트가 잠깐 멈춰도 막대는 계속 돌아 '멈춘 것 아님'을 전한다). */}
             <div className="progress-track">
-              <div
-                className={scanPercent === null ? "progress-indeterminate" : "progress-fill"}
-                style={scanPercent === null ? undefined : { width: `${scanPercent}%` }}
-              />
+              <div className="progress-indeterminate" />
             </div>
             {progress.currentPath && (
               <div className="progress-path">{middlePath(progress.currentPath, 72)}</div>
@@ -962,6 +1002,8 @@ function App() {
                 totalSize={result.totalSize}
                 errors={result.errors}
                 errorHint={errorBreakdown ? describeErrors(errorBreakdown) : undefined}
+                excludedKeys={excludedCats}
+                onToggleExclude={toggleExcludeCat}
               />
               <LargestFiles
                 files={largestFiles}
@@ -970,12 +1012,17 @@ function App() {
                 onCopyPath={handleCopyPath}
               />
               <TreeView
-                root={result.root}
+                root={folderExcl ? folderExcl.tree : result.root}
                 query={treeQuery}
                 onQueryChange={setTreeQuery}
                 onRescan={handleRescan}
                 onReveal={handleReveal}
                 onCopyPath={handleCopyPath}
+                onToggleExclude={toggleExcludePath}
+                onRestoreExcluded={restoreAllPaths}
+                excludedSize={folderExcl?.excludedSize ?? 0}
+                excludedCount={folderExcl?.items.length ?? 0}
+                originalSize={result.totalSize}
               />
             </>
           )}

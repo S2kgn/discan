@@ -32,7 +32,16 @@ interface Props {
   errors: number;
   /** '권한 문제'로 단정하지 않도록 사유별 분해가 있으면 함께 받는다. */
   errorHint?: string;
+  /**
+   * 사용자가 이 패널에서 계산에 빼 둔 분야 키(선택). 분야·내용 축에서만 의미가 있다
+   * (확장자 축의 키는 합성값이라 제외 대상이 아니다). onToggleExclude 가 없으면 제외 UI 도 없다.
+   */
+  excludedKeys?: ReadonlySet<string>;
+  onToggleExclude?: (key: string) => void;
 }
+
+/** 빈 제외 집합. 매 렌더 새 Set 을 만들지 않도록 모듈 상수로 둔다. */
+const NO_EXCLUSIONS: ReadonlySet<string> = new Set();
 
 type Axis = "hint" | "content" | "ext";
 
@@ -80,6 +89,8 @@ function CategorySummaryImpl({
   totalSize,
   errors,
   errorHint,
+  excludedKeys = NO_EXCLUSIONS,
+  onToggleExclude,
 }: Props) {
   const [axis, setAxis] = useState<Axis>("hint");
   /**
@@ -177,7 +188,18 @@ function CategorySummaryImpl({
    */
   const scopedTotal = rows.reduce((sum, c) => sum + c.size, 0);
   const filtering = axis === "ext" && extFilter !== null && canCross;
-  const basis = filtering ? scopedTotal : totalSize;
+
+  /*
+   * 분야 제외.
+   *
+   * 확장자 축의 키는 합성값(ext:…·__residual)이라 제외 대상이 아니다 — 분야·내용
+   * 축에서만 제외를 받는다. 제외한 분야는 분모(basis)에서도 빠져, 남은 분야의 비중
+   * 합이 다시 100%가 된다('캐시를 빼고 나머지 구성을 보고 싶다'가 이 기능의 목적이다).
+   */
+  const axisSupportsExclude = !!onToggleExclude && (axis === "hint" || axis === "content");
+  const isExcluded = (c: CategoryStat) => axisSupportsExclude && excludedKeys.has(c.key);
+  const excludedTotal = rows.filter(isExcluded).reduce((sum, c) => sum + c.size, 0);
+  const basis = filtering ? scopedTotal : totalSize - excludedTotal;
 
   /** 백엔드가 실제로 나열한 개별 확장자 수. 잔여 합산 행은 세지 않는다. */
   const listedExtCount = (extensions ?? []).filter((e) => !isExtOverflowRow(e.ext)).length;
@@ -201,8 +223,10 @@ function CategorySummaryImpl({
     );
   }
 
-  const visible = rows.filter((c) => percent(c.size, basis) >= 0.1);
-  const smallSum = rows
+  // 제외한 분야는 스택 바에서도 빠진다. 나머지 중 0.1% 미만만 잔여로 합산한다.
+  const included = rows.filter((c) => !isExcluded(c));
+  const visible = included.filter((c) => percent(c.size, basis) >= 0.1);
+  const smallSum = included
     .filter((c) => percent(c.size, basis) < 0.1)
     .reduce((sum, c) => sum + c.size, 0);
 
@@ -256,6 +280,7 @@ function CategorySummaryImpl({
             className="btn tiny axis-tab"
             aria-pressed={axis === "hint"}
             onClick={() => setAxis("hint")}
+            title="폴더 이름을 함께 봅니다 — node_modules·cache 폴더는 통째로 캐시로 셉니다"
           >
             분야
           </button>
@@ -287,10 +312,33 @@ function CategorySummaryImpl({
         </div>
       </div>
 
+      {/* 세 축의 차이는 라벨만으로는 전달되지 않는다. 현재 축이 무엇을 기준으로
+          분류하는지, 그리고 이웃 축과 어떻게 다른지를 한 줄로 항상 밝힌다. */}
+      {axis === "hint" && (
+        <p className="axis-note">
+          <strong>폴더 이름을 함께 봅니다.</strong> node_modules·cache 같은 폴더는 그 안의 파일
+          종류와 무관하게 통째로 ‘캐시·임시 파일’로 셉니다 — 실제로 무엇이 들어 있는지는
+          {hasContent && (
+            <>
+              {" "}
+              <button
+                type="button"
+                className="link-btn"
+                aria-label="‘내용 기준’ 축으로 전환"
+                onClick={() => setAxis("content")}
+              >
+                내용 기준
+              </button>
+              에서 봅니다.
+            </>
+          )}
+          {!hasContent && " ‘내용 기준’ 축에서 확인합니다."}
+        </p>
+      )}
       {axis === "content" && (
         <p className="axis-note">
-          폴더 이름 힌트(cache·node_modules 등)를 빼고 파일 확장자만으로 다시 분류한 결과입니다.
-          '캐시·임시 파일'의 내부가 무엇이었는지 여기서 확인할 수 있습니다.
+          <strong>폴더 이름을 무시하고 파일 종류(확장자)만으로 분류합니다.</strong> ‘분야’에서
+          캐시로 묶였던 node_modules 안이 실제로는 코드·이미지였음을 여기서 확인할 수 있습니다.
         </p>
       )}
       {axis === "ext" && (
@@ -326,6 +374,16 @@ function CategorySummaryImpl({
               내용 기준으로 확인
             </button>
           )}
+        </p>
+      )}
+
+      {/* 분야 제외가 있으면 아래 비중이 '제외 후' 기준임을 밝힌다 — 밝히지 않으면
+          합이 100%인데 총량과 안 맞아 보인다. 개별 원복은 각 행의 '원복' 링크가 한다. */}
+      {axisSupportsExclude && excludedTotal > 0 && (
+        <p className="cat-excluded" role="status">
+          {formatCount(rows.filter(isExcluded).length)}개 분야를 뺐습니다 · 제외 후 합계{" "}
+          <strong>{formatBytes(totalSize - excludedTotal)}</strong> (원래 {formatBytes(totalSize)}).
+          아래 비중은 제외 후 기준입니다.
         </p>
       )}
 
@@ -395,6 +453,7 @@ function CategorySummaryImpl({
               <span className="cat-label" role="columnheader">
                 {axis === "ext" ? "확장자" : "분야"}
               </span>
+              <span className="cat-bar-wrap head" role="columnheader" aria-label="비중 막대" />
               <span className="cat-pct" role="columnheader">
                 비중
               </span>
@@ -414,8 +473,12 @@ function CategorySummaryImpl({
                 const warning = CATEGORY_WARNINGS[c.key];
                 const label = labelOf(c);
                 const cross = crossOf(c);
+                const excluded = isExcluded(c);
+                // 숫자만으로는 '캐시 84% vs 코드 0.5%'의 규모 차가 즉시 안 읽힌다.
+                // 트리 행과 같은 비중 막대를 붙여 시선으로 바로 비교되게 한다.
+                const share = percent(c.size, basis);
                 return (
-                  <li key={c.key} className="cat-row" role="row">
+                  <li key={c.key} className={`cat-row${excluded ? " excluded" : ""}`} role="row">
                     <span
                       className="cat-dot"
                       role="cell"
@@ -438,7 +501,7 @@ function CategorySummaryImpl({
                       {/* '기타 1.65 GiB 가 미분류'라는 사실만 알고 끝나면 분류표를 개선할
                           길이 없다. 그 덩어리를 분해하는 경로를 행에 노출하되, 이름보다
                           먼저 접히게 해서 행의 1차 식별자를 밀어내지 않는다. */}
-                      {cross && (
+                      {cross && !excluded && (
                         <button
                           type="button"
                           className="link-btn"
@@ -448,9 +511,31 @@ function CategorySummaryImpl({
                           {cross.text}
                         </button>
                       )}
+                      {/* 이 분야를 총계에서 빼거나 되돌린다. 확장자 축에서는 키가 합성값이라
+                          제외 대상이 아니므로 버튼을 주지 않는다. */}
+                      {axisSupportsExclude && (
+                        <button
+                          type="button"
+                          className={`link-btn${excluded ? " active" : ""}`}
+                          aria-label={`${label} — ${excluded ? "용량 계산에 다시 포함" : "용량 계산에서 제외"}`}
+                          onClick={() => onToggleExclude?.(c.key)}
+                        >
+                          {excluded ? "원복" : "제외"}
+                        </button>
+                      )}
+                    </span>
+                    <span className="cat-bar-wrap" role="cell" aria-hidden="true">
+                      {/* 제외된 분야는 총계에 없으므로 막대를 그리지 않는다(분모가 그만큼 줄어
+                          다른 행이 100%를 다시 채운다). */}
+                      {!excluded && (
+                        <span
+                          className="cat-bar"
+                          style={{ width: `${Math.min(share, 100)}%`, background: categoryColor(c) }}
+                        />
+                      )}
                     </span>
                     <span className="cat-pct" role="cell" aria-label={`${label} 비중`}>
-                      {formatPercent(percent(c.size, basis))}
+                      {excluded ? "제외" : formatPercent(share)}
                     </span>
                     <span className="cat-size" role="cell" aria-label={`${label} 용량`}>
                       <span className="num">{size.value}</span>

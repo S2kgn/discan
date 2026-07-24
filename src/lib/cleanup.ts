@@ -95,14 +95,17 @@ const RULES: Rule[] = [
   {
     id: "temp",
     title: "임시 파일",
-    hint: "재부팅 후에도 남는 임시 파일입니다. 삭제해도 복구됩니다.",
+    // '복구된다'는 되찾을 수 있다는 뜻이라 임시 파일에는 오해다 — 필요하면 프로그램이
+    // 다시 만든다는 뜻이므로 그렇게 적는다.
+    hint: "재부팅 뒤에도 남아 있는 임시 파일입니다. 지워도 프로그램이 필요할 때 다시 만듭니다.",
     risk: "safe",
     names: ["temp", "tmp", "temporary internet files"],
   },
   {
     id: "node-modules",
     title: "node_modules",
-    hint: "npm install 로 언제든 복구됩니다. 쓰지 않는 프로젝트부터 지우십시오.",
+    // 여기서도 '복구'가 아니라 '다시 받는다'가 정확하다(원본은 npm 레지스트리에 있다).
+    hint: "npm install 로 언제든 다시 받을 수 있습니다. 쓰지 않는 프로젝트부터 지우십시오.",
     risk: "safe",
     names: ["node_modules"],
   },

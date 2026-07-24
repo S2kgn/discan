@@ -38,6 +38,16 @@ interface Props {
   onRescan: (path: string) => void;
   onReveal: (path: string) => void;
   onCopyPath: (path: string) => void;
+  /**
+   * 용량 계산 제외 기능(선택). 제외 여부는 root 트리의 각 노드 `excluded` 표식으로
+   * 오므로 경로 집합을 따로 받지 않는다. 이 콜백이 없으면 제외 UI 자체가 없다.
+   */
+  onToggleExclude?: (path: string) => void;
+  onRestoreExcluded?: () => void;
+  /** 제외로 총계에서 빠진 바이트·개수와 제외 전 총량. 패널 머리의 '제외 후' 요약에 쓴다. */
+  excludedSize?: number;
+  excludedCount?: number;
+  originalSize?: number;
 }
 
 /** 들여쓰기 상한. 깊이 12까지 그대로 밀면 최소 창 폭에서 그리드가 넘친다. */
@@ -58,6 +68,11 @@ function TreeViewImpl({
   onRescan,
   onReveal,
   onCopyPath,
+  onToggleExclude,
+  onRestoreExcluded,
+  excludedSize = 0,
+  excludedCount = 0,
+  originalSize = 0,
 }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(collectPaths(root, 2)));
   const [focusIndex, setFocusIndex] = useState(0);
@@ -159,7 +174,9 @@ function TreeViewImpl({
         return;
       }
       const parts = truncateParts(node);
-      const hasChildren = node.children.length > 0 || parts.length > 0;
+      // 제외된 노드는 잎으로 다룬다 — 하위를 펼치면 그 안에서 개별 제외를 또 토글할
+      // 수 있어 '이미 통째로 뺀 것'과 모순된다. 원복하면 다시 펼칠 수 있다.
+      const hasChildren = !node.excluded && (node.children.length > 0 || parts.length > 0);
       const open = hasChildren && expanded.has(node.path);
       out.push({
         // 경로는 트리 안에서 이미 유일하다. 인덱스를 섞으면 상단 폴더 하나를 접을 때마다
@@ -315,8 +332,16 @@ function TreeViewImpl({
        */
       case "r":
       case "R":
-        if (row.part?.reason !== "depthLimit") return;
+        // 생략 행(사유 무관)에서 그 폴더만 다시 스캔한다. 재스캔하면 가지치기 임계값이
+        // 그 폴더 기준으로 다시 잡혀(전체÷2000 → 훨씬 작아짐) 숨었던 항목이 드러난다.
+        if (row.kind !== "truncated") return;
         onRescan(row.node.path);
+        break;
+      // 용량 계산에서 제외·원복. 생략 행에는 해당 노드가 없으므로 실제 노드 행에만 건다.
+      case "x":
+      case "X":
+        if (row.kind !== "node" || !onToggleExclude) return;
+        onToggleExclude(row.node.path);
         break;
       default:
         return;
@@ -357,6 +382,23 @@ function TreeViewImpl({
     <section className="panel panel-tree">
       <div className="panel-head">
         <h2 className="panel-title">폴더별 용량</h2>
+        {/* 제외가 있으면 총계가 왜 줄었는지 이 줄이 설명한다 — '제외 후 X (원래 Y)'와
+            한 번에 되돌릴 수단을 함께 둔다. 개별 원복은 각 행의 ↩ 버튼이 한다. */}
+        {excludedCount > 0 && (
+          <div className="tree-excluded" role="status">
+            <span>
+              {formatCount(excludedCount)}개 제외 · 제외 후{" "}
+              <strong>{formatBytesParts(originalSize - excludedSize).value}{" "}
+              {formatBytesParts(originalSize - excludedSize).unit}</strong>{" "}
+              <span className="tree-excluded-orig">
+                (원래 {formatBytesParts(originalSize).value} {formatBytesParts(originalSize).unit})
+              </span>
+            </span>
+            <button type="button" className="btn tiny" onClick={onRestoreExcluded}>
+              모두 원복
+            </button>
+          </div>
+        )}
         <div className="tree-tools">
           <input
             className="tree-search"
@@ -451,7 +493,15 @@ function TreeViewImpl({
             if (row.kind === "truncated") {
               const part = row.part!;
               const size = formatBytesParts(part.bytes);
-              const amount = part.bytes > 0 ? ` · 합계 ${size.value} ${size.unit}` : "";
+              /*
+               * 생략 합계의 '부모 대비 비중'.
+               *
+               * node.size 는 남긴 자식 + 생략 바이트를 모두 포함하므로(백엔드 불변식),
+               * part.bytes / node.size 가 곧 '이 폴더에서 생략분이 차지하는 몫'이다.
+               * 개별은 작아도 합치면 부모의 큰 부분일 수 있다는 것 — 사용자가 지적한
+               * 바로 그 상황 — 을 막대로 보이게 한다. 숫자만 접어 두면 보이지 않는다.
+               */
+              const shareOfParent = percent(part.bytes, row.node.size);
               /*
                * 사유가 둘 이상인데 백엔드가 바이트를 나눠 보내지 않으면 어느 줄에도
                * 바이트가 붙지 않는다 — '생략한 것은 개수·크기·사유를 남긴다'는 이 앱의
@@ -465,12 +515,14 @@ function TreeViewImpl({
                 rest > 0 && isLastPart
                   ? ` (이 폴더에서 생략된 합계 ${formatBytesParts(rest).value} ${formatBytesParts(rest).unit})`
                   : "";
+              // 개별은 작지만 합치면 클 수 있다는 뜻을 이름에 담고, 규모는 옆 열(막대·%·
+              // 용량)이 낸다. 'R 로 이 폴더만 다시 스캔'하면 임계값이 낮아져 드러난다.
               const text =
                 part.reason === "depthLimit"
-                  ? `깊이 제한으로 하위 ${formatCount(part.count)}개를 표시하지 않았습니다${amount}`
+                  ? `깊이 제한으로 생략한 하위 ${formatCount(part.count)}개`
                   : part.reason === "childCap"
-                    ? `표시 한도로 ${formatCount(part.count)}개를 생략했습니다${amount}`
-                    : `용량이 작아 ${formatCount(part.count)}개를 표시하지 않았습니다${amount}`;
+                    ? `표시 한도로 생략한 ${formatCount(part.count)}개`
+                    : `개별 용량이 작아 생략한 ${formatCount(part.count)}개 — 합치면 아래 비중`;
 
               return (
                 <div
@@ -493,25 +545,43 @@ function TreeViewImpl({
                     {text}
                     {restText}
                   </span>
-                  <span className="tree-bar-wrap" role="gridcell" />
-                  <span className="tree-pct" role="gridcell" />
-                  <span className="tree-size" role="gridcell" />
+                  {/* 생략 합계를 막대로 보인다 — 개별이 작아도 부모의 큰 몫이면 막대가
+                      길게 나와, 접힌 회색 주석이 아니라 규모로 읽힌다. */}
+                  <span className="tree-bar-wrap" role="gridcell">
+                    {part.bytes > 0 && (
+                      <span
+                        className="tree-bar omitted"
+                        style={{ width: `${Math.min(shareOfParent, 100)}%` }}
+                      />
+                    )}
+                  </span>
+                  <span className="tree-pct" role="gridcell">
+                    {part.bytes > 0 ? formatPercent(shareOfParent) : ""}
+                  </span>
+                  <span className="tree-size" role="gridcell">
+                    {part.bytes > 0 && (
+                      <>
+                        <span className="num">{size.value}</span>
+                        <span className="unit">{size.unit}</span>
+                      </>
+                    )}
+                  </span>
                   <span className="tree-files" role="gridcell" />
                   <span className="tree-actions" role="gridcell">
-                    {part.reason === "depthLimit" && (
-                      <button
-                        type="button"
-                        className="row-btn"
-                        tabIndex={-1}
-                        title="이 경로부터 다시 스캔 (R)"
-                        // 글리프가 그대로 접근 가능한 이름이 되면 '시계 방향 화살표,
-                        // 버튼'으로 낭독된다. 이름은 문구로 주고 글리프는 감춘다.
-                        aria-label={`${row.node.name} — 이 경로부터 다시 스캔`}
-                        onClick={() => onRescan(row.node.path)}
-                      >
-                        <span aria-hidden="true">⟳</span>
-                      </button>
-                    )}
+                    {/* 사유와 무관하게 '이 폴더만 다시 스캔'을 준다 — 재스캔하면 가지치기
+                        임계값이 이 폴더 기준으로 낮아져 생략됐던 항목이 드러난다. */}
+                    <button
+                      type="button"
+                      className="row-btn"
+                      tabIndex={-1}
+                      title="이 폴더만 다시 스캔 (R)"
+                      // 글리프가 그대로 접근 가능한 이름이 되면 '시계 방향 화살표,
+                      // 버튼'으로 낭독된다. 이름은 문구로 주고 글리프는 감춘다.
+                      aria-label={`${row.node.name} — 이 폴더만 다시 스캔해 생략된 항목 보기`}
+                      onClick={() => onRescan(row.node.path)}
+                    >
+                      <span aria-hidden="true">⟳</span>
+                    </button>
                   </span>
                 </div>
               );
@@ -527,7 +597,7 @@ function TreeViewImpl({
             return (
               <div
                 key={row.id}
-                className={`tree-row${row.hasChildren ? " clickable" : ""}${file ? " file" : ""}${node.incomplete ? " incomplete" : ""}`}
+                className={`tree-row${row.hasChildren ? " clickable" : ""}${file ? " file" : ""}${node.incomplete ? " incomplete" : ""}${node.excluded ? " excluded" : ""}`}
                 role="row"
                 aria-level={row.depth + 1}
                 aria-setsize={row.setSize}
@@ -535,7 +605,7 @@ function TreeViewImpl({
                 aria-expanded={row.hasChildren ? row.open : undefined}
                 // 파일 수 열이 낭독에서 빠져 있었다 — 화면에 있는 열은 모두 이름에 담는다.
                 // lossyPath 는 포커스 낭독만으로 이 행이 조작 불가임을 알 수 있게 함께 싣는다.
-                aria-label={`${node.name}, ${size.value} ${size.unit}, 전체의 ${formatPercent(shareOfTotal)}${file ? "" : `, 파일 ${formatCount(node.files)}개`}${node.incomplete ? ", 하위 집계 미완료" : ""}${node.lossyPath ? ", 표준 문자가 아니라 열기·복사 불가" : ""}`}
+                aria-label={`${node.name}, ${size.value} ${size.unit}${node.excluded ? ", 용량 계산에서 제외됨" : `, 전체의 ${formatPercent(shareOfTotal)}`}${file ? "" : `, 파일 ${formatCount(node.files)}개`}${node.incomplete ? ", 하위 집계 미완료" : ""}${node.lossyPath ? ", 표준 문자가 아니라 열기·복사 불가" : ""}`}
                 data-row={index}
                 tabIndex={index === activeIndex ? 0 : -1}
                 onFocus={() => setFocusIndex(index)}
@@ -557,10 +627,14 @@ function TreeViewImpl({
                   )}
                 </span>
                 <span className="tree-bar-wrap" role="gridcell">
-                  <span className="tree-bar" style={{ width: `${Math.min(barShare, 100)}%` }} />
+                  {/* 제외된 노드는 총계에 없으므로 막대를 그리지 않는다 — 그리면 조정된
+                      분모 대비 100%를 넘어 다른 행들과 어긋난다. */}
+                  {!node.excluded && (
+                    <span className="tree-bar" style={{ width: `${Math.min(barShare, 100)}%` }} />
+                  )}
                 </span>
                 <span className="tree-pct" role="gridcell">
-                  {formatPercent(shareOfTotal)}
+                  {node.excluded ? "제외" : formatPercent(shareOfTotal)}
                 </span>
                 <span className="tree-size" role="gridcell">
                   <span className="num">{size.value}</span>
@@ -613,6 +687,23 @@ function TreeViewImpl({
                       </button>
                     </>
                   )}
+                  {/* 제외·원복은 lossyPath 여도 쓸 수 있다 — 경로를 열지 않고 키로만
+                      계산에서 빼는 조작이라 표준 문자가 아니어도 문제가 없다. */}
+                  {onToggleExclude && (
+                    <button
+                      type="button"
+                      className={`row-btn${node.excluded ? " active" : ""}`}
+                      tabIndex={-1}
+                      title={node.excluded ? "용량 계산에 다시 포함 (X)" : "용량 계산에서 제외 (X)"}
+                      aria-label={`${node.name} — ${node.excluded ? "용량 계산에 다시 포함" : "용량 계산에서 제외"}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleExclude(node.path);
+                      }}
+                    >
+                      <span aria-hidden="true">{node.excluded ? "↩" : "⊘"}</span>
+                    </button>
+                  )}
                 </span>
               </div>
             );
@@ -635,8 +726,8 @@ function TreeViewImpl({
           다섯 가지를 한 줄에 몰아 두면 아무도 읽지 않는 회색 줄이 된다. 각 행의
           ↗·⧉ 버튼 툴팁이 이미 같은 안내를 하므로 키 두 개만 남긴다. */}
       <p className="tree-hint">
-        행을 선택하고 O: 탐색기에서 위치 보기 · C: 경로 복사 · R: 깊이 제한 행을 다시 스캔 (↑↓
-        이동, →← 펼치기·접기)
+        행을 선택하고 O: 탐색기에서 위치 보기 · C: 경로 복사 · X: 용량 계산에서 제외·원복 · R:
+        생략 행을 다시 스캔 (↑↓ 이동, →← 펼치기·접기)
         {capped && ` · 표시 행이 상한(${formatCount(MAX_ROWS)})에 걸렸습니다.`}
       </p>
     </section>

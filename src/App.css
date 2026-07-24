@@ -1442,12 +1442,38 @@ body {
 .cat-row,
 .cat-head {
   display: grid;
-  grid-template-columns: 14px minmax(150px, 1fr) 52px 108px 74px;
+  /* dot · 라벨 · 비중막대 · 비중% · 용량 · 파일. 막대 열은 트리와 같은 시각 비교
+     장치라 트리 막대 폭(~90px)과 비슷하게 잡되, 좁은 창에서 라벨을 먼저 지키려고
+     막대는 고정폭으로 둔다. */
+  grid-template-columns: 14px minmax(120px, 1fr) 90px 48px 100px 62px;
   align-items: center;
   gap: 9px;
   padding: 4px 0;
   font-size: var(--fs-md);
   font-variant-numeric: tabular-nums;
+}
+
+/* 분야 행 비중 막대. 트리의 tree-bar 와 같은 트랙+채움 형식으로 시각 언어를 맞춘다. */
+.cat-bar-wrap {
+  height: 6px;
+  background: var(--track);
+  box-shadow: inset 0 0 0 1px var(--track-line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+/* 머리글 칸의 막대 자리는 트랙을 그리지 않는다(빈 열 머리). */
+.cat-bar-wrap.head {
+  background: none;
+  box-shadow: none;
+}
+
+.cat-bar {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  /* 0.1% 미만도 최소 2px 는 보이게 — 막대가 아예 안 보이면 '0'과 구별되지 않는다. */
+  min-width: 2px;
 }
 
 /* 트리 머리글과 같은 형식. 세 수치 목록의 열 의미를 같은 방식으로 낸다. */
@@ -1855,10 +1881,76 @@ body {
   background: var(--accent);
 }
 
+/* 생략 합계 막대는 실제 노드 막대와 색을 달리한다 — '표시된 것'과 '생략된 것'이
+   같은 파랑이면 한 막대로 읽힌다. 경고색 계열로 '여기 안 보이는 게 이만큼'을 낸다. */
+.tree-bar.omitted {
+  background: var(--warn);
+  opacity: 0.85;
+}
+
 .tree-pct {
   text-align: right;
   color: var(--text-dim);
   font-size: var(--fs-sm);
+}
+
+/* ---------- 용량 계산 제외 ---------- */
+
+/* 제외한 행: 취소선 + 감쇠로 '총계에 없음'을 낸다. 이름은 읽혀야 하므로 아주
+   흐리게 하지는 않는다(원복 버튼을 찾아야 한다). */
+.tree-row.excluded .tree-name,
+.tree-row.excluded .tree-size,
+.cat-row.excluded .cat-name,
+.cat-row.excluded .cat-size {
+  text-decoration: line-through;
+  color: var(--text-dim);
+}
+
+.tree-row.excluded .tree-pct,
+.cat-row.excluded .cat-pct {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+/* 제외/원복 토글이 켜진 상태. 원복 링크·버튼이 눈에 띄게. */
+.row-btn.active {
+  color: var(--warn);
+  border-color: var(--warn-border);
+}
+
+.link-btn.active {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+/* 트리 패널 머리의 '제외 후 합계' 요약. */
+.tree-excluded {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-right: auto;
+  padding: 3px 10px;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: 8px;
+  font-size: var(--fs-xs);
+  color: var(--text);
+}
+
+.tree-excluded-orig {
+  color: var(--text-dim);
+}
+
+/* 분야 패널의 '제외 후 합계' 안내. */
+.cat-excluded {
+  margin: 0 0 10px;
+  padding: 6px 10px;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: 8px;
+  font-size: var(--fs-xs);
+  color: var(--text);
 }
 
 .tree-size {
