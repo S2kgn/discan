@@ -236,6 +236,8 @@ function App() {
             elevated: res.elevated,
             sizeBasis: res.sizeBasis,
             appVersion: res.appVersion,
+            // 중복 제거 기준이 다르면 총량 델타는 정리 성과가 아니다(elevated 와 동형).
+            dedup: res.dedup,
           }),
         );
         setHistory((prev) =>
@@ -248,6 +250,9 @@ function App() {
             // 같은 볼륨도 실행 권한에 따라 총량이 GB 단위로 달라진다. 저장해 두지
             // 않으면 그 차이가 다음 스캔에서 '정리 성과'로 보고된다.
             elevated: res.elevated,
+            // dedup 기준 차이도 같은 크기의 오독을 만든다. 비교·내보내기에서 함께 쓴다.
+            dedup: res.dedup,
+            dedupMinBytes: res.dedupMinBytes,
           }),
         );
       } else {
@@ -595,8 +600,12 @@ function App() {
               라벨 없는 '1초 미만 · 오전 12:54:00' 은 앞이 소요 시간인지 알 수 없었다.
             */}
             <span className="target-summary-when">
+              {/* 초 단위는 의사결정에 기여하지 않으면서 정렬도 안 되는 자리라 뺀다(분까지). */}
               {scannedAt &&
-                `${scannedAt.toLocaleTimeString(navigator.language || "ko-KR")} 스캔 · `}
+                `${scannedAt.toLocaleTimeString(navigator.language || "ko-KR", {
+                  hour: "numeric",
+                  minute: "2-digit",
+                })} 스캔 · `}
               {formatDuration(result.elapsedMs)} 소요
             </span>
             {/* 좁은 창에서 줄바꿈이 일어날 때 텍스트가 아니라 이 묶음이 내려가야
@@ -782,17 +791,21 @@ function App() {
           onBlur={resumeToast}
         >
           <span className="toast-text">{toast}</span>
-          {/* 자동으로 사라지지 않는 톤에는 해제 수단이 반드시 있어야 한다. */}
-          {toastSticky && (
-            <button
-              type="button"
-              className="icon-btn"
-              aria-label="알림 닫기"
-              onClick={() => setToast("")}
-            >
-              ✕
-            </button>
-          )}
+          {/*
+            닫기 버튼은 정보 톤에도 상시 둔다.
+            정보 토스트는 3.5초 뒤 자동 소멸하는데, 일시정지가 onMouseEnter/onFocus 로만
+            걸리고 정보 토스트에는 포커스할 내부 대상이 없어 마우스 없는 키보드 사용자는
+            타이머를 멈출 수단이 없었다(WCAG 2.2.1). 이 버튼이 포커스 대상이 되어
+            onFocus→holdToast 로 타이머가 멈추고, 해제 수단도 함께 제공된다.
+          */}
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="알림 닫기"
+            onClick={() => setToast("")}
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -841,7 +854,6 @@ function App() {
           recent={recent}
           onPick={(p) => void startScan(p)}
           onClearHistory={clearHistory}
-          driveLabel={selectedDrive ? selectedDrive.path.replace(/\\$/, "") : null}
         />
       )}
 

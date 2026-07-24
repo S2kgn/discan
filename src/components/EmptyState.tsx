@@ -3,26 +3,21 @@ interface Props {
   onPick: (path: string) => void;
   /** 최근 경로와 이력을 함께 지운다. 공용 PC·화면 공유에서 필요한 수단이다. */
   onClearHistory: () => void;
-  /** 선택된 드라이브 문자('D:'). 4번 타일의 라벨을 결과와 같게 맞추는 데 쓴다. */
-  driveLabel?: string | null;
 }
 
 /**
  * 실행 직후 창 아래쪽이 통째로 비어 있으면 무엇이 나올지 알 수 없다.
  * 결과 레이아웃의 고스트를 흐리게 깔아 화면 구성을 미리 알린다.
  */
-export function EmptyState({ recent, onPick, onClearHistory, driveLabel }: Props) {
+export function EmptyState({ recent, onPick, onClearHistory }: Props) {
   /*
-   * 고스트가 존재하는 이유가 '무엇이 나올지 미리 알린다'는 것이므로, 라벨이 결과와
-   * 다른 것을 약속하면 그 목적이 그만큼 훼손된다. 예전에는 4번 칸이 '소요'였는데
-   * 볼륨 문자만 맞으면(가장 흔한 경우) 결과는 '여유 공간'을 낸다.
+   * 고스트의 목적은 '무엇이 나올지 미리 알린다'는 것이라, 라벨이 결과와 다른 것을
+   * 약속하면 그 목적이 훼손된다. 3·4번 타일은 결과 시점에 지표가 분기한다 —
+   * 정리 후보가 없으면 3번은 '폴더', 스캔 경로의 볼륨이 안 잡히면 4번은 '소요'로
+   * 바뀐다(ResultHeader). 예고 라벨을 하나로 못 박으면 그 분기에서 어긋나므로,
+   * 늘 맞는 1·2번만 라벨을 두고 분기하는 3·4번은 형태(중립 스켈레톤)만 남긴다.
    */
-  const labels = [
-    "총 용량",
-    "파일",
-    "정리 후보",
-    driveLabel ? `${driveLabel} 여유 공간` : "여유 공간",
-  ];
+  const labels = ["총 용량", "파일"];
   return (
     <section className="panel empty-state">
       <div className="ghost" aria-hidden="true">
@@ -31,6 +26,12 @@ export function EmptyState({ recent, onPick, onClearHistory, driveLabel }: Props
             <div key={label} className="ghost-stat">
               <span className="ghost-value" />
               <span className="ghost-label">{label}</span>
+            </div>
+          ))}
+          {[0, 1].map((i) => (
+            <div key={`skel-${i}`} className="ghost-stat">
+              <span className="ghost-value" />
+              <span className="ghost-label ghost-label-skeleton" />
             </div>
           ))}
         </div>

@@ -32,6 +32,14 @@ export interface CleanupTip {
   /** 검색으로 나머지에 도달할 때 쓸 질의어(규칙이 잡는 폴더 이름). */
   query: string;
   /**
+   * 후보가 수십 곳으로 파편화됐을 때의 대안 정리 경로.
+   *
+   * 앱 캐시처럼 80곳·최대 20 MiB 로 흩어진 후보는 유일한 실행 어포던스('탐색기에서
+   * 위치 보기')가 그중 한 조각만 열어, 안내대로 따라도 되찾는 공간이 헤드라인의
+   * 1% 대에 그친다. 그런 후보에는 개별 폴더 대신 OS·앱 기본 정리 경로를 함께 안내한다.
+   */
+  osHint?: string;
+  /**
    * 합계·개수가 하한값인지.
    *
    * 이 함수는 이미 가지치기된 트리(result.root)를 훑는다 — 백엔드가 임계 미만
@@ -52,6 +60,8 @@ interface Rule {
   risk: CleanupRisk;
   /** 매칭 대상 폴더 이름들(소문자). 첫 항목을 트리 검색어로 그대로 쓴다. */
   names: string[];
+  /** 파편화됐을 때 개별 폴더 대신 안내할 OS·앱 기본 정리 경로. */
+  osHint?: string;
 }
 
 /**
@@ -102,6 +112,8 @@ const RULES: Rule[] = [
     hint: "도구가 다시 내려받습니다. 다만 오프라인 환경이면 재설치가 느려집니다.",
     risk: "safe",
     names: [".cargo", ".gradle", ".nuget", ".m2", "packagecache", "npm-cache", "pip"],
+    osHint:
+      "여러 도구에 흩어져 있으면 각 도구의 정리 명령(예: npm cache clean)으로 한 번에 지우는 편이 빠릅니다.",
   },
   {
     id: "app-cache",
@@ -109,6 +121,8 @@ const RULES: Rule[] = [
     hint: "앱이 다시 만듭니다. 로그인 상태가 풀릴 수 있습니다.",
     risk: "caution",
     names: ["cache", "caches", ".cache", "cache_data", "code cache", "gpucache"],
+    osHint:
+      "폴더를 하나씩 열기보다, 각 앱·브라우저 설정의 ‘캐시 지우기’나 Windows 설정 > 시스템 > 저장 공간 > 임시 파일에서 한 번에 정리하는 편이 안전하고 효과가 큽니다.",
   },
   {
     id: "vcs",
@@ -235,6 +249,7 @@ export function cleanupTips(
           label: labelFor(node.path),
           paths: [],
           query: rule.names[0],
+          osHint: rule.osHint,
           // 최종 판정은 순회가 끝난 뒤에 한 번에 채운다(뒤쪽 가지에서 잘림이 나올 수 있다).
           isLowerBound: false,
         });

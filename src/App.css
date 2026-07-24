@@ -860,6 +860,16 @@ body {
   align-self: end;
 }
 
+/* 각주·델타가 없는 타일(파일·정리 후보 등)은 1fr 사강(死腔)이 아래에 남아, stretch
+   된 카드 높이만큼 라벨 아래로 ~40px 빈 대역이 생긴다 — KPI 밴드가 '바닥까지 찬 타일
+   둘 + 절반 빈 타일 둘'로 그려져 기준선이 흔들린다. :has 로 그 타일만 골라 1fr 을
+   걷고 값·라벨을 세로 중앙에 두면, 각주 타일의 바닥 고정과 무관하게 네 타일의 시각
+   무게 중심이 한 줄에 놓인다(런타임은 WebView2=Chromium 이라 :has 를 쓸 수 있다). */
+.stat:not(:has(.stat-foot)):not(:has(.stat-delta)) {
+  grid-template-rows: auto auto;
+  align-content: center;
+}
+
 /* 내보내기는 결과 전체에 대한 조작이다. 지표 타일 밖, 결과 영역 머리 행에 둔다. */
 .results-head {
   display: flex;
@@ -1023,10 +1033,13 @@ body {
   gap: 10px;
 }
 
-/* 카드가 한둘이면 340px 오른쪽으로 700px 가까운 공백이 남는다 — 화면에서 가장
-   중요한 CTA 패널이 가장 성긴 영역이 되지 않도록 폭을 늘려 정보를 채운다. */
+/* 카드가 한둘이면 340px 오른쪽으로 700px 가까운 공백이 남는다 — 폭을 늘려 정보를
+   채우되, 1fr 로 두면 단독 카드가 창 폭(~1050px) 전체로 늘어나 tip-head 의 제목과
+   용량(margin-left:auto)이, tip-foot 의 위치와 버튼(space-between)이 화면 양끝으로
+   ~900px 벌어진다. 상한을 560px 로 못 박아 단독 카드에서도 제목-용량·위치-버튼의
+   근접성을 지킨다(둘일 때는 auto-fit 이 두 트랙을 나란히 놓는다). */
 .tip-grid.sparse {
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 560px));
 }
 
 /* 후보 합계 — 이 패널이 답해야 할 질문의 첫 조각. */
@@ -1084,10 +1097,27 @@ body {
   color: var(--text-dim);
 }
 
+/* 면책 + 집계 규칙 두 문단을 담는다. 기본 p 여백 대신 문단 사이만 벌린다. */
+.tip-note p {
+  margin: 0;
+}
+
+.tip-note p + p {
+  margin-top: 6px;
+}
+
 .tip-paths-head {
   margin: 5px 0 0;
   font-size: var(--fs-xs);
   color: var(--text-dim);
+}
+
+/* 파편화된 후보의 대안 정리 경로. 경고가 아니라 안내이므로 중립 회색 한 줄로 둔다. */
+.tip-os-hint {
+  margin: 8px 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  line-height: 1.5;
 }
 
 .tip-more {
@@ -1465,21 +1495,19 @@ body {
   text-overflow: ellipsis;
 }
 
-/* opacity 감쇠는 --accent 에 곱해져 흰 패널 위 실효 대비를 3.2:1 로 떨어뜨렸다
-   (11px 텍스트는 굵기와 무관하게 4.5:1 이 요구된다). 시각적 무게는 색이 아니라
-   밑줄로 조절하고, 상시 밑줄 대신 호버·포커스에서만 강조한다. */
+/* 정지 상태에서도 밑줄을 남긴다(WCAG 1.4.1).
+   예전에는 opacity 감쇠가 --accent 에 곱해져 흰 패널 위 실효 대비를 3.2:1 로
+   떨어뜨려 밑줄을 뺐는데(그 대안이 호버 전용 밑줄이었다), 그 결과 '내용 기준으로
+   분해' 링크가 정지 상태에서 --accent 색 하나로만 본문과 구분되어 색각 이상
+   사용자에게는 조작 가능 여부가 호버 전까지 드러나지 않았다. 다른 .link-btn 과
+   같이 상시 밑줄로 되돌린다 — 이 링크는 '기타' 행에만 붙어 세로 밑줄 띠가 목록
+   정렬을 흐트러뜨리지 않는다. */
 .cat-row .link-btn {
   flex: 0 1 auto;
   min-width: 0;
   margin-left: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-decoration: none;
-}
-
-.cat-row .link-btn:hover,
-.cat-row .link-btn:focus-visible {
-  text-decoration: underline;
 }
 
 .cat-warn {
@@ -1949,6 +1977,14 @@ body {
 .ghost-label {
   font-size: var(--fs-xs);
   color: var(--text-dim);
+}
+
+/* 결과 시점에 지표가 분기하는 3·4번 타일은 라벨을 못 박지 않고 형태만 예고한다. */
+.ghost-label-skeleton {
+  height: 9px;
+  width: 44%;
+  background: var(--skeleton);
+  border-radius: 3px;
 }
 
 .ghost-bar {

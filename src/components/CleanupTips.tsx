@@ -75,14 +75,34 @@ function CleanupTipsImpl({ tips, free, minSize, cacheCategory, onReveal, onSearc
         </button>
       </div>
       {noteOpen && (
-        <p className="tip-note" role="note">
-          이 앱은 아무것도 지우지 않습니다 — 삭제는 탐색기에서 직접 확인한 뒤 하십시오. 등급은
-          일반적인 기준이며, 지워도 되는지의 최종 판단은 내용을 보고 하셔야 합니다.
-        </p>
+        <div className="tip-note" role="note">
+          <p>
+            이 앱은 아무것도 지우지 않습니다 — 삭제는 탐색기에서 직접 확인한 뒤 하십시오. 등급은
+            일반적인 기준이며, 지워도 되는지의 최종 판단은 내용을 보고 하셔야 합니다.
+          </p>
+          {/*
+            집계 규칙 캐비엇.
+            예전에는 헤드라인과 후보 카드 사이에 상시 노출되어 '무엇을 해야 하나'를
+            즉시 알고 싶은 첫눈의 흐름을 세 줄만큼 뒤로 밀었다. ⓘ 는 이제 호버가
+            아니라 눌러서 여는(키보드·터치에서도 닿는) 팝오버이고, 합계에는 여전히
+            ‘최소’ 표식이 붙어 하한임이 드러나므로 해석 조건을 여기로 옮긴다.
+          */}
+          <p>
+            후보는 이름으로 확실히 알아볼 수 있는 폴더(캐시·휴지통·node_modules 같은
+            개발용 폴더 등)만 셉니다
+            {cacheCategory && cacheCategory.size > total
+              ? ` — ‘${cacheCategory.label}’로 분류된 ${formatBytes(cacheCategory.size)} 중 ${formatBytes(total)} 입니다. 나머지는 아래 ‘폴더별 용량’에서 직접 확인하십시오.`
+              : " — 나머지는 아래 ‘폴더별 용량’에서 직접 확인하십시오."}
+            {lowerBound &&
+              (minSize !== undefined && minSize > 0
+                ? ` 합계는 화면에 표시된 폴더만 더한 값이라, 용량이 ${formatBytes(minSize)} 미만이거나 너무 깊은 폴더는 목록에 없습니다.`
+                : " 합계는 화면에 표시된 폴더만 더한 값이라, 생략된 작은·깊은 폴더가 빠져 있습니다.")}
+          </p>
+        </div>
       )}
 
       {/* '이걸 지우면 몇 GB 남지?'는 이 패널이 답해야 할 질문이다. 다만 그 답이
-          확정 수치처럼 읽히면 안 된다 — 아래 합계는 가지치기된 트리에서 나온 하한이다. */}
+          확정 수치처럼 읽히면 안 된다 — '최소' 표식과 ⓘ 의 해석 조건이 그 몫을 한다. */}
       <p className="tip-goal">
         후보 합계 {lowerBound && "최소 "}
         {formatBytes(total)}
@@ -111,32 +131,26 @@ function CleanupTipsImpl({ tips, free, minSize, cacheCategory, onReveal, onSearc
           )}
         </p>
       )}
-      {/* 숫자의 해석 조건은 숫자 옆에 있어야 한다. 호버 전용 ⓘ 안에 두면
-          키보드·터치 사용자에게는 '1.57 GiB'가 확정값으로만 읽힌다. */}
-      <p className="tip-goal-note">
-        {/*
-          가장 큰 누락 사유를 적지 않으면 '작은 폴더 몇 개가 빠진 정도'로 오해된다.
-          분야 패널이 '캐시·빌드 산출물 12.8 GiB'라고 말하는 화면에서 이 카드가
-          '1.57 GiB'를 내면 8배 차이가 설명 없이 남는데, 실제 원인은 임계값이 아니라
-          '이름으로 확실히 알아볼 수 있는 폴더만 센다'는 규칙이다.
-        */}
-        후보는 이름으로 확실히 알아볼 수 있는 폴더(캐시·휴지통·node_modules 등)만 셉니다
-        {cacheCategory && cacheCategory.size > total
-          ? ` — ‘${cacheCategory.label}’로 분류된 ${formatBytes(cacheCategory.size)} 중 ${formatBytes(total)} 입니다. 나머지는 아래 ‘폴더별 용량’에서 직접 확인하십시오.`
-          : " — 나머지는 아래 ‘폴더별 용량’에서 직접 확인하십시오."}
-        {lowerBound &&
-          (minSize !== undefined && minSize > 0
-            ? ` 합계는 화면에 표시된 폴더만 더한 값이라, 용량이 ${formatBytes(minSize)} 미만이거나 너무 깊은 폴더는 목록에 없습니다.`
-            : " 합계는 화면에 표시된 폴더만 더한 값이라, 생략된 작은·깊은 폴더가 빠져 있습니다.")}
-      </p>
-
       <div className={`tip-grid${tips.length <= 2 ? " sparse" : ""}`}>
         {tips.map((tip) => {
-          // 카드가 가로로 나란히 놓이므로 여기도 목록 규칙(1자리 고정)을 따른다.
-          const size = formatBytesParts(tip.size, { fixedDigits: 1 });
+          /*
+           * 카드 머리의 합계는 가변 자릿수로 둔다.
+           *
+           * 카드가 하나뿐이면 이 값은 섹션 헤더·타일의 '후보 합계'와 완전히 같은 수인데,
+           * 여기만 1자리 고정(1.6)이고 헤더는 가변(1.57)이면 세로 8px 간격에서 같은
+           * 값이 다른 숫자로 보인다. fixedDigits 고정은 실제로 열이 정렬되는 목록
+           * (아래 tip-paths)에만 쓰고, 반복 표기되는 집계값에는 쓰지 않는다.
+           */
+          const size = formatBytesParts(tip.size);
           const multi = tip.count > 1;
           const expanded = open.has(tip.id);
           const shown = Math.min(tip.count, tip.paths.length || TOP_PATHS);
+          /*
+           * 파편화 판정 — 가장 큰 한 곳이 합계의 절반에도 못 미치면, '탐색기에서 위치
+           * 보기'가 여는 그 한 조각으로는 헤드라인 규모에 닿지 못한다. 그때는 개별
+           * 폴더 대신 OS·앱 기본 정리 경로를 함께 안내한다.
+           */
+          const fragmented = multi && !!tip.osHint && (tip.paths[0]?.size ?? tip.size) < tip.size * 0.5;
           return (
             <article
               key={tip.id}
@@ -181,6 +195,10 @@ function CleanupTipsImpl({ tips, free, minSize, cacheCategory, onReveal, onSearc
                   탐색기에서 위치 보기
                 </button>
               </div>
+
+              {/* 후보가 수십 곳으로 흩어져 개별 열기로는 규모에 닿지 못하는 경우의
+                  대안 정리 경로. 위치 보기 버튼 바로 아래에 두어 함께 읽히게 한다. */}
+              {fragmented && <p className="tip-os-hint">{tip.osHint}</p>}
 
               {/* 합계는 여러 곳을 더한 값인데 열 수 있는 것이 한 곳뿐이면,
                   큰 숫자를 보여 주고 실행은 막는 카드가 된다. */}

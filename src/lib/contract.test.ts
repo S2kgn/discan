@@ -130,6 +130,29 @@ describe("IPC 계약", () => {
   });
 
   /**
+   * DriveType 은 구조체 '키'가 아니라 '값'으로 분기하는 계약이다(FailedKind·alloc_basis 와
+   * 같은 갈래). 프런트는 `driveBlockedReason`/`pickDefaultDrive` 에서 "remote"·"cdrom"·
+   * "removable"·"fixed" 를 직접 비교한다 — 백엔드가 `drive_type_name` 의 리터럴을 하나만
+   * 바꿔도 cargo check·tsc·다른 계약 테스트가 모두 초록인 채 원격 드라이브 차단이 조용히
+   * 풀린다(원격 stat 한 번이 곧 자격증명 전송이라 보안 회귀다). Rust 원본의 match 팔을
+   * 그대로 긁어 유니온과 대조한다.
+   */
+  it("백엔드 drive_type_name 의 모든 값이 TS DriveType 유니온에 있다", () => {
+    const fnStart = libRs.indexOf("fn drive_type_name(");
+    expect(fnStart, "lib.rs 에서 drive_type_name 을 찾지 못했습니다").toBeGreaterThan(0);
+    const body = libRs.slice(fnStart, libRs.indexOf("\n}", fnStart));
+    const emitted = [...new Set([...body.matchAll(/=>\s*"([a-zA-Z]+)"/g)].map((m) => m[1]))];
+    // removable·fixed·remote·cdrom·ram·unknown — 여섯 갈래가 모두 나와야 한다.
+    expect(emitted.length, "drive_type_name 에서 값 리터럴을 찾지 못했습니다").toBeGreaterThan(4);
+
+    const union = /export type DriveType =([\s\S]*?);/.exec(typesTs)?.[1] ?? "";
+    const declared = [...union.matchAll(/"([a-zA-Z]+)"/g)].map((m) => m[1]);
+    // 양방향으로 잠근다 — 백엔드가 늘린 값이 화면 분기에서 누락되는 것도, 화면에만
+    // 남은 유령 값이 다음 사람을 헷갈리게 하는 것도 같은 드리프트다.
+    expect(declared.sort()).toEqual(emitted.sort());
+  });
+
+  /**
    * 커맨드 이름과 **인자 이름**. 여기가 어긋나면 컴파일은 모두 통과하고 런타임에만
    * 호출이 실패한다(Tauri 2 는 JS 의 camelCase 를 Rust 의 snake_case 로 바꿔 받는다).
    *

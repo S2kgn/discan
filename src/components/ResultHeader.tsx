@@ -55,7 +55,12 @@ function ResultHeaderImpl({
     <>
       <section className="stat-row">
         <div className="stat">
-          <span className="stat-value">
+          {/* GiB 설명은 펼친 대상 패널에만 있어 결과 화면에서는 사라졌다. 1차 지표
+              타일에 상시 툴팁으로 붙여 '이 숫자가 탐색기의 GB와 같은 값'임을 남긴다. */}
+          <span
+            className="stat-value"
+            title="GiB = 탐색기가 'GB'로 적는 값과 같은 계산입니다 (1 GiB = 1024 MiB)."
+          >
             <span className="num">
               {lowerBound && "≥ "}
               {totalParts.value}

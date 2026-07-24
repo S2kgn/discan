@@ -290,7 +290,7 @@ function CategorySummaryImpl({
       {axis === "content" && (
         <p className="axis-note">
           폴더 이름 힌트(cache·node_modules 등)를 빼고 파일 확장자만으로 다시 분류한 결과입니다.
-          '캐시·빌드 산출물'의 내부가 무엇이었는지 여기서 확인할 수 있습니다.
+          '캐시·임시 파일'의 내부가 무엇이었는지 여기서 확인할 수 있습니다.
         </p>
       )}
       {axis === "ext" && (

@@ -90,6 +90,22 @@ describe("compareMessage", () => {
     expect(c.text).toContain("집계 기준이 달라");
   });
 
+  /**
+   * hardlink → none 은 errors 드리프트(50건)에 잡히지 않으면서도 WinSxS·패키지 캐시를
+   * 링크 수만큼 재계수해 총량을 GB 단위로 부풀린다. elevated 와 같은 오독이므로 유보한다.
+   */
+  it("중복 제거 기준이 달라지면 총량 비교를 하지 않는다", () => {
+    const c = compareMessage(
+      { size: 30 * GiB, at: "2026-07-20T00:00:00.000Z", dedup: "hardlink" },
+      { size: 42 * GiB, dedup: "none" },
+      NOW,
+    );
+    expect(c.direction).toBe("unknown");
+    expect(c.text).toContain("중복 제거 기준이 달라");
+    expect(c.text).toContain("하드링크 중복 제거 → 중복 제거 없음");
+    expect(c.text).not.toContain("늘었습니다");
+  });
+
   it("권한이 같으면 평소대로 비교한다", () => {
     const c = compareMessage(
       { size: 42 * GiB, at: "2026-07-20T00:00:00.000Z", elevated: false },

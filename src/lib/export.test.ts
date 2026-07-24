@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { ScanNode, ScanResult } from "../types";
+import { History } from "./history";
 import {
   buildCategoryCsv,
   buildExtensionCsv,
   buildFailedPathsCsv,
+  buildHistoryCsv,
   buildJson,
   buildTreeCsv,
   exportDisclosure,
@@ -111,23 +113,36 @@ describe("buildTreeCsv", () => {
   });
 
   it("프리앰블이 권하는 총량 복원법이 실제 데이터에서 성립한다", () => {
-    // 예전 지침('sum kind=file rows, or sum self_bytes')은 둘 다 틀린 값을 냈다:
-    // self_bytes 합계는 늘 0이고, kind=file 행은 디렉터리당 상위 N개만 실린다.
+    // 예전 지침('sum kind=file rows, or sum self_bytes')과 그 다음의 깊이별 식
+    // ('SUM(size at d) + SUM(truncated at d)')은 모두 틀렸다 — 후자는 size 안에 이미
+    // 든 truncated_bytes 를 다시 더해 이중 계산했다(d=0 만 봐도 총량 + 루트 생략분).
     const header = cells(lines[0]);
     const rows = lines.slice(1).map(cells);
     const at = (row: string[], name: string) => Number(row[header.indexOf(name)]);
 
+    // ① 신뢰 가능한 depth=0 행 방식.
     const depth0 = rows.filter((r) => at(r, "depth") === 0);
     expect(depth0.reduce((a, r) => a + at(r, "size_bytes"), 0)).toBe(result.totalSize);
 
-    // 같은 depth 의 size_bytes 합 + 그 위 depth 의 truncated_bytes 합.
-    const depth1 = rows.filter((r) => at(r, "depth") === 1);
-    const restored =
-      depth1.reduce((a, r) => a + at(r, "size_bytes"), 0) +
-      depth0.reduce((a, r) => a + at(r, "truncated_bytes"), 0);
+    // ② 깊이·파일리프와 무관한 보편식: 각 행의 자기 잔여(size − 직속 자식 size 합) 합.
+    // 행은 전위 순회(부모가 자식보다 먼저)라, 직속 자식은 depth 가 되돌아오기 전의
+    // depth+1 행들이다. dir 행에서는 truncated_bytes, 파일 행에서는 자기 크기와 같다.
+    let restored = 0;
+    for (let i = 0; i < rows.length; i += 1) {
+      const d = at(rows[i], "depth");
+      let childSum = 0;
+      for (let j = i + 1; j < rows.length; j += 1) {
+        const dj = at(rows[j], "depth");
+        if (dj <= d) break;
+        if (dj === d + 1) childSum += at(rows[j], "size_bytes");
+      }
+      restored += at(rows[i], "size_bytes") - childSum;
+    }
     expect(restored).toBe(result.totalSize);
 
     expect(csv).toContain("# NOTE: total = size_bytes of the depth=0 row");
+    // 이중 계산하던 깊이별 식이 프리앰블에서 사라졌는지 잠근다.
+    expect(csv).not.toContain("SUM(size_bytes at d) + SUM(truncated_bytes at d)");
     expect(csv).not.toContain("self_bytes");
   });
 
@@ -168,6 +183,44 @@ describe("buildTreeCsv", () => {
   });
 });
 
+describe("CSV 수식 인젝션 무력화(OWASP)", () => {
+  function evilTree(name: string): ScanResult {
+    return {
+      ...result,
+      root: { name, path: "C:\\safe", size: 10, files: 1, isDir: true, children: [], truncated: 0 } as ScanNode,
+    };
+  }
+
+  it("=,+,-,@,탭으로 시작하는 이름 셀을 작은따옴표로 무력화한다", () => {
+    // 파일명이 곧 셀이라, `=HYPERLINK(...)` 라는 이름의 폴더가 인접 셀의 절대 경로를
+    // 외부로 반출한다. 위험 문자로 시작하면 선두에 ' 를 덧대 수식 트리거를 끊는다.
+    for (const payload of ["=cmd|'/c calc'", "+1", "-2", "@x", "\tHYPERLINK"]) {
+      const line = body(buildTreeCsv(evilTree(payload), "C:\\")).find((l) => l.includes(",dir,"))!;
+      // name 은 두 번째 열. cells() 는 CSV 인용만 벗기므로 무력화용 ' 는 그대로 남는다.
+      expect(cells(line)[1].startsWith("'"), `무력화되지 않음: ${JSON.stringify(payload)}`).toBe(true);
+    }
+  });
+
+  it("확장자·실패 경로 열도 같은 규칙으로 무력화한다", () => {
+    const ext = body(buildExtensionCsv({ ...result, extensions: [{ ext: "=cmd", size: 200, files: 1 }] }));
+    expect(ext.some((l) => l.startsWith("'=cmd,"))).toBe(true);
+
+    const failed = body(buildFailedPathsCsv({ ...result, failedPaths: [{ path: "@SUM(A1)", kind: "denied" }] }, "C:\\"));
+    expect(failed.some((l) => l.startsWith("'@SUM(A1),"))).toBe(true);
+  });
+
+  it("무력화 규칙과 원본 복원법을 프리앰블에 밝힌다", () => {
+    expect(buildTreeCsv(result, "C:\\")).toContain("prefixed with a single quote");
+  });
+
+  it("드라이브 문자·일반 이름·수치는 건드리지 않는다", () => {
+    // 정상 경로(C:...)·이름(big.iso)·음수 아닌 수치가 오탐으로 무력화되면 안 된다.
+    const csv = buildTreeCsv(result, "C:\\");
+    expect(csv).not.toContain("'C:");
+    expect(csv).not.toContain("'big.iso");
+  });
+});
+
 describe("buildCategoryCsv", () => {
   it("프런트 사전의 표시 이름과 축 안에서의 비중을 쓴다", () => {
     // 분모는 축 합계다. 두 축은 분류 규칙이 달라 합계가 서로 다를 수 있다.
@@ -180,7 +233,7 @@ describe("buildCategoryCsv", () => {
       contentCategories: [{ key: "cache", size: 120, files: 3 }],
     });
     expect(csv).toContain("axis,key,label,size_bytes,files,percent_of_axis");
-    expect(csv).toContain("content,cache,캐시·빌드 산출물,120,3,100.000");
+    expect(csv).toContain("content,cache,캐시·임시 파일,120,3,100.000");
   });
 });
 
@@ -242,10 +295,29 @@ describe("경로 익명화", () => {
 describe("buildExtensionCsv", () => {
   it("상위 목록 밖의 나머지를 residual 행으로 채워 100%를 설명한다", () => {
     const lines = body(buildExtensionCsv(result));
-    expect(lines[0]).toBe("ext,label,category,size_bytes,files,percent_of_total");
-    expect(lines[1]).toBe("iso,iso,,200,1,66.667");
+    expect(lines[0]).toBe("ext,label,category,size_bytes,files,percent_of_total,kinds,is_other");
+    expect(lines[1]).toBe("iso,iso,,200,1,66.667,,0");
     expect(lines[2].startsWith("__residual,")).toBe(true);
     expect(lines[2]).toContain(",100,");
+    // residual 은 상위 30 회계의 일부라 is_other=0 으로 끝난다.
+    expect(lines[2].endsWith(",0")).toBe(true);
+  });
+
+  it("'기타' 분해용 롱테일 확장자를 is_other=1 섹션으로 별도로 싣는다", () => {
+    // otherExtensions 는 전역 상위 30에 정의상 들지 못해, 없으면 확장자 CSV·JSON
+    // 어디에서도 개별 확장자를 되짚을 수 없다(오프라인 분해·분류표 개선이 끊긴다).
+    const lines = body(
+      buildExtensionCsv({
+        ...result,
+        otherExtensions: [{ ext: "bak", size: 50, files: 2, category: "other", kinds: 1 }],
+      }),
+    );
+    const otherRow = lines.find((l) => l.startsWith("bak,"));
+    expect(otherRow).toBeDefined();
+    // kinds 와 is_other 를 함께 실어 소수 대형인지 롱테일인지 판별되게 한다.
+    expect(otherRow).toBe("bak,bak,other,50,2,16.667,1,1");
+    // 롱테일은 상위 30·residual 회계에 더하지 않는다(residual 이 그대로 남는다).
+    expect(lines.some((l) => l.startsWith("__residual,"))).toBe(true);
   });
 
   it("키 열은 로케일 독립 ASCII 센티널만 담는다", () => {
@@ -335,6 +407,47 @@ describe("buildJson", () => {
   it("백엔드에 필드가 추가돼도 자동으로 실리지 않는다(화이트리스트)", () => {
     const sneaky = { ...result, secretNewField: "leak" } as ScanResult & { secretNewField: string };
     expect(buildJson(sneaky, "C:\\")).not.toContain("secretNewField");
+  });
+
+  it("'기타' 분해용 otherExtensions 를 화이트리스트에 포함한다", () => {
+    // 화면(CategorySummary)만 쓰던 롱테일 축이 산출물에서 빠져 오프라인 분해가 끊겼다.
+    const parsed = JSON.parse(
+      buildJson({ ...result, otherExtensions: [{ ext: "bak", size: 50, files: 2 }] }, "C:\\"),
+    );
+    expect(parsed.otherExtensions[0].ext).toBe("bak");
+  });
+});
+
+describe("buildHistoryCsv", () => {
+  const history: History = {
+    "C:\\proj": {
+      size: 100,
+      at: "2026-07-20T00:00:00.000Z",
+      totalFiles: 5,
+      errors: 0,
+      elevated: true,
+      sizeBasis: "logical",
+      dedup: "hardlink",
+      dedupMinBytes: 4096,
+      appVersion: "0.1.0",
+    },
+  };
+
+  it("시계열 CSV 에 dedup 기준을 실어 총량 델타를 검증할 수 있게 한다", () => {
+    const lines = body(buildHistoryCsv(history));
+    expect(lines[0]).toBe(
+      "path,at,size_bytes,total_files,errors,elevated,size_basis,dedup,dedup_min_bytes,app_version",
+    );
+    // 같은 경로를 hardlink/none 으로 각각 스캔한 두 스냅샷의 기준 차이를 CSV 만으로
+    // 재구성할 수 있어야 감사 추적이 끊기지 않는다.
+    expect(lines[1]).toContain(",logical,hardlink,4096,0.1.0");
+  });
+
+  it("dedup 이 없는 구버전 저장값도 빈 칸으로 안전하게 나간다", () => {
+    const legacy: History = { "C:\\p": { size: 1, at: "2026-07-20T00:00:00.000Z" } };
+    const lines = body(buildHistoryCsv(legacy));
+    // 헤더 열 수와 행 열 수가 어긋나면 파서가 밀린다. 빈 칸이라도 자리는 지킨다.
+    expect(lines[1].split(",")).toHaveLength(10);
   });
 });
 

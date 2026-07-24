@@ -19,6 +19,15 @@ export interface HistoryEntry {
    */
   elevated?: boolean;
   /**
+   * 중복 제거 수준("hardlink" | "none"). 같은 경로를 정상 NTFS(hardlink)로 한 번,
+   * volume_info 조회 실패로 none 으로 한 번 스캔하면 WinSxS·패키지 캐시가 링크 수만큼
+   * 재계수되어 총량이 GB 단위로 달라진다 — elevated 에서 이미 방어한 오독을 더 큰
+   * 축에서 되살리므로, 비교 전에 판정할 수 있게 함께 저장한다.
+   */
+  dedup?: string;
+  /** 하드링크 추적 하한(바이트). dedup 이 같아도 이 값이 다르면 잡힌 중복 범위가 다르다. */
+  dedupMinBytes?: number;
+  /**
    * 같은 경로의 최근 실행들(최신 우선, 상한 HISTORY_RUNS_MAX).
    *
    * 경로별 최신 1건만 두면 compareMessage 가 '직전 스캔 대비'밖에 말할 수 없어,
@@ -125,8 +134,9 @@ function stampOf(prev: string, now: Date, locale: string): string {
   if (Number.isNaN(when.getTime())) return "지난 스캔";
   const sameDay = now.getTime() - when.getTime() < 24 * 60 * 60 * 1000
     && now.toDateString() === when.toDateString();
+  // 초 단위는 정렬도 되지 않는 자리에서 잡음만 더한다 — 비교 기준 시각은 분이면 충분하다.
   return sameDay
-    ? `오늘 ${when.toLocaleTimeString(locale)}`
+    ? `오늘 ${when.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" })}`
     : when.toLocaleDateString(locale);
 }
 
@@ -137,6 +147,15 @@ export interface Snapshot {
   elevated?: boolean;
   sizeBasis?: string;
   appVersion?: string;
+  /** 중복 제거 수준. 두 스냅샷이 다르면 총량 델타는 정리 성과가 아니다(elevated 와 동형). */
+  dedup?: string;
+}
+
+/** 중복 제거 수준의 우리말 표기. 백엔드 키가 유보 문구에 그대로 새어 나가지 않게 한다. */
+function dedupLabel(dedup: string): string {
+  if (dedup === "hardlink") return "하드링크 중복 제거";
+  if (dedup === "none") return "중복 제거 없음";
+  return dedup;
 }
 
 /** 정리한 보람은 숫자로 보여야 한다. 같은 경로의 직전 스캔과 비교한다. */
@@ -178,6 +197,19 @@ export function compareMessage(
   if (prev.appVersion !== undefined && current.appVersion !== undefined && prev.appVersion !== current.appVersion) {
     return {
       text: `${stamp} 이후 앱이 갱신되어(${prev.appVersion} → ${current.appVersion}) 집계 방식이 달라졌을 수 있습니다.`,
+      direction: "unknown",
+    };
+  }
+  /*
+   * 중복 제거 기준이 달라졌으면 총량 차이는 정리 성과가 아니다.
+   *
+   * hardlink → none 으로 바뀌면 WinSxS·패키지 캐시가 링크 수만큼 재계수되어 총량이
+   * GB 단위로 뛰는데, elevated 처럼 errors 드리프트에는 잡히지 않는다. 같은 패턴으로
+   * 유보한다.
+   */
+  if (prev.dedup !== undefined && current.dedup !== undefined && prev.dedup !== current.dedup) {
+    return {
+      text: `${stamp}와 중복 제거 기준이 달라(${dedupLabel(prev.dedup)} → ${dedupLabel(current.dedup)}) 총량 비교가 성립하지 않습니다.`,
       direction: "unknown",
     };
   }

@@ -485,14 +485,19 @@ export const CATEGORY_LABELS: Record<string, string> = {
   database: "데이터베이스",
   dataset: "모델·데이터셋",
   diskimage: "디스크 이미지",
-  cache: "캐시·빌드 산출물",
+  // '빌드 산출물'은 비개발자에게 뜻이 없는 말이라 1차 라벨은 일상어로 둔다 —
+  // 이 분야는 화면에서 가장 큰 비중을 차지하는 경우가 많아 이름 자체가 해독되어야
+  // 한다. 무엇이 함께 잡히는지(빌드 산출물 등)는 CATEGORY_WARNINGS 로 내렸다.
+  // (백엔드 category.rs 의 라벨은 폴백이라 이 값이 우선한다 — 라벨은 프런트 소유.)
+  cache: "캐시·임시 파일",
   other: "기타",
 };
 
 /** 지워도 되는지 오해를 부르는 분야에 다는 주의 문구. */
 export const CATEGORY_WARNINGS: Record<string, string> = {
   cache:
-    ".git 이력·가상환경·시스템 캐시가 함께 잡힙니다. 캐시라고 모두 지워도 되는 것은 아닙니다.",
+    "브라우저·앱 캐시, 개발 도구가 만든 폴더(빌드 산출물·.git 이력·가상환경), 시스템 캐시가 " +
+    "함께 잡힙니다. 캐시라고 모두 지워도 되는 것은 아닙니다.",
 };
 
 export function categoryLabel(stat: CategoryStat): string {

