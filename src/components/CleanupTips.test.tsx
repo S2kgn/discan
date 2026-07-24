@@ -79,7 +79,7 @@ describe("CleanupTips", () => {
     expect(screen.getByText("Slack")).toBeInTheDocument();
   });
 
-  it("후보 합계가 분야 합계와 어긋나는 이유를 ⓘ 안에서 화해시킨다", async () => {
+  it("후보 합계와 분야 합계의 화해 문장을 접힘 밖에 상시 노출한다", async () => {
     render(
       <CleanupTips
         tips={[tip]}
@@ -90,11 +90,12 @@ describe("CleanupTips", () => {
     );
     // 합계의 하한 표식('최소')은 첫눈에 보여 값이 확정 수치로 읽히지 않게 한다.
     expect(screen.getByText(/후보 합계 최소/)).toBeInTheDocument();
+    // 8배 차이 나는 두 헤드라인이 첫눈에 모순으로 읽히지 않도록, 화해 다리는 클릭 없이 보인다.
+    expect(screen.getByText(/‘캐시·임시 파일’로 분류된 12.8 GiB 가운데/)).toBeInTheDocument();
     // 집계 규칙 캐비엇은 첫눈의 흐름(헤드라인 → 후보 카드)을 막지 않도록 ⓘ 로 옮겼다.
     expect(screen.queryByText(/이름으로 확실히 알아볼 수 있는 폴더/)).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "이 목록을 읽는 조건" }));
     expect(screen.getByText(/이름으로 확실히 알아볼 수 있는 폴더/)).toBeInTheDocument();
-    expect(screen.getByText(/‘캐시·임시 파일’로 분류된 12.8 GiB 중/)).toBeInTheDocument();
   });
 
   it("파편화된 후보에는 개별 열기 대신 OS 정리 경로를 함께 안내한다", () => {
@@ -126,10 +127,13 @@ describe("CleanupTips", () => {
     expect(screen.queryByText("브라우저 캐시를 한 번에 비우십시오")).toBeNull();
   });
 
-  it("면책은 호버가 아니라 눌러서 여는 팝오버로 도달한다", async () => {
+  it("안심 문구는 접힘 밖에 상시 보이고, 집계 규칙 캐비엇은 눌러서 여는 팝오버에 있다", async () => {
     render(<CleanupTips tips={[tip]} onReveal={() => {}} />);
-    expect(screen.queryByText(/이 앱은 아무것도 지우지 않습니다/)).toBeNull();
+    // 삭제를 걱정하는 사용자를 위한 안심 문구는 결과 화면에서 클릭 없이 보여야 한다.
+    expect(screen.getByText(/이 앱은 목록만 보여줍니다/)).toBeInTheDocument();
+    // 해석 조건(집계 규칙)은 첫눈의 흐름을 막지 않도록 ⓘ 로 옮겼다.
+    expect(screen.queryByText(/등급은 일반적인 기준이며/)).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "이 목록을 읽는 조건" }));
-    expect(screen.getByText(/이 앱은 아무것도 지우지 않습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/등급은 일반적인 기준이며/)).toBeInTheDocument();
   });
 });

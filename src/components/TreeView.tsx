@@ -66,6 +66,15 @@ function TreeViewImpl({
   const [appliedQuery, setAppliedQuery] = useState("");
   const [sort, setSort] = useState<SortState>({ key: "size", dir: "desc" });
   const [barMode, setBarMode] = useState<BarMode>("parent");
+  /**
+   * 조작 불가 행에서 O/C 를 눌렀을 때의 낭독 문구.
+   *
+   * lossyPath 행은 열기·복사가 실패하도록 예정돼 있어 버튼 대신 ⚠ 아이콘만 두는데,
+   * 키보드 사용자가 O/C 를 누르면 예전에는 조용히 return 해 아무 피드백이 없었다
+   * ('기능이 왜 안 되는지'를 알 수 없는 무피드백 no-op). 이 라이브 리전으로 이유를
+   * 낭독한다 — App 의 notify 채널을 끌어오면 memo 안정성을 깨므로 컴포넌트 안에 둔다.
+   */
+  const [rowNotice, setRowNotice] = useState("");
   const bodyRef = useRef<HTMLDivElement>(null);
   /**
    * 검색이 자동으로 펼친 경로. 검색을 끝낼 때 이 집합만 되돌린다.
@@ -279,14 +288,23 @@ function TreeViewImpl({
         if (row.kind === "node" && row.hasChildren) toggle(row.node);
         break;
       // 버튼을 감춘 행에서 단축키만 살아 있으면 같은 결함이 키보드에만 남는다.
+      // lossyPath 행은 열기·복사가 예정된 실패라 버튼을 두지 않는다. 그러나 조용히
+      // return 하면 키보드·낭독 사용자는 '왜 안 되는지'를 알 수 없다 — ⚠ 아이콘의
+      // 설명을 라이브 리전으로도 낸다(row-note 의 title 과 같은 문구).
       case "o":
       case "O":
-        if (row.node.lossyPath) return;
+        if (row.node.lossyPath) {
+          setRowNotice("이 이름은 표준 문자로 표현할 수 없어 열기·복사를 지원하지 않습니다.");
+          break;
+        }
         onReveal(row.node.path);
         break;
       case "c":
       case "C":
-        if (row.node.lossyPath) return;
+        if (row.node.lossyPath) {
+          setRowNotice("이 이름은 표준 문자로 표현할 수 없어 열기·복사를 지원하지 않습니다.");
+          break;
+        }
         onCopyPath(row.node.path);
         break;
       /*
@@ -516,7 +534,8 @@ function TreeViewImpl({
                 aria-posinset={row.posInSet}
                 aria-expanded={row.hasChildren ? row.open : undefined}
                 // 파일 수 열이 낭독에서 빠져 있었다 — 화면에 있는 열은 모두 이름에 담는다.
-                aria-label={`${node.name}, ${size.value} ${size.unit}, 전체의 ${formatPercent(shareOfTotal)}${file ? "" : `, 파일 ${formatCount(node.files)}개`}${node.incomplete ? ", 하위 집계 미완료" : ""}`}
+                // lossyPath 는 포커스 낭독만으로 이 행이 조작 불가임을 알 수 있게 함께 싣는다.
+                aria-label={`${node.name}, ${size.value} ${size.unit}, 전체의 ${formatPercent(shareOfTotal)}${file ? "" : `, 파일 ${formatCount(node.files)}개`}${node.incomplete ? ", 하위 집계 미완료" : ""}${node.lossyPath ? ", 표준 문자가 아니라 열기·복사 불가" : ""}`}
                 data-row={index}
                 tabIndex={index === activeIndex ? 0 : -1}
                 onFocus={() => setFocusIndex(index)}
@@ -606,6 +625,11 @@ function TreeViewImpl({
       {rows.length === 0 && appliedQuery.trim() !== "" && (
         <p className="tree-empty">‘{appliedQuery}’와 이름이 일치하는 항목이 없습니다.</p>
       )}
+
+      {/* 조작 불가 행에서 O/C 를 눌렀을 때의 낭독 채널. 시각에는 드러나지 않는다. */}
+      <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {rowNotice}
+      </p>
 
       {/* '수식키'는 모디파이어 키의 번역어이고 '토글'도 일반 사용자 어휘가 아니다.
           다섯 가지를 한 줄에 몰아 두면 아무도 읽지 않는 회색 줄이 된다. 각 행의

@@ -92,7 +92,14 @@ export function csvPreamble(
     `# discan ${result.appVersion ?? "0.1.0"} ${kind} export`,
     // 익명화 모드에서는 첫 줄부터 절대 경로가 나가면 안 된다 — 체크박스 라벨이
     // 약속하는 것과 산출물이 다르면 그 통제는 통제로 기능하지 않는다.
-    `# target=${options.anonymizePaths ? driveOf(root) : root}`,
+    //
+    // 값은 스캔 루트 경로 — 곧 공격자가 폴더 이름으로 좌우할 수 있는 입력이다.
+    // Windows 경로에는 쉼표가 합법이라 `# target=C:\Report,=HYPERLINK("http://evil",A1)`
+    // 같은 루트는 이 줄을 두 셀로 쪼개 둘째 셀 `=HYPERLINK(...)`가 Excel/Sheets 에서
+    // 평가된다(#로 시작하는 메타 줄이라도 셀 단위로는 수식이 평가된다). `# key=값`
+    // 전체를 한 셀로 감싸(csvCell) 쉼표 분리와 선두 트리거를 함께 끊는다 — `#`로
+    // 시작하는 셀은 수식이 아니라 텍스트로 남는다.
+    csvCell(`# target=${options.anonymizePaths ? driveOf(root) : root}`),
     `# started_at=${result.startedAt ?? ""} exported_at=${new Date().toISOString()}`,
     // cluster_slack=not_counted 는 total_size_bytes 에 걸리는 조건이다. 아래 allocated_bytes
     // 와 나란히 놓이면 어느 수치의 서술인지 모호해지므로 size_basis 안에 묶어 적는다.
@@ -105,8 +112,11 @@ export function csvPreamble(
      * 빠져 있었다. elevated 도 마찬가지다: 같은 볼륨을 관리자/일반 권한으로 두 번
      * 스캔한 두 CSV 의 수 GB 차이를 설명하는 1차 변수인데 화면에만 있었다.
      */
+    // file_system 은 OS 가 보고하는 값이라 공격 표면이 좁지만, 프리앰블 스스로
+      // '위험 문자로 시작하는 셀은 무력화했다'고 고지하므로 데이터성 값은 예외 없이
+      // csvCell 을 거치게 한다(선두 트리거 무력화·쉼표 인용).
     `# allocated_bytes=${result.allocatedEstimate ?? 0} alloc_basis=${result.allocBasis ?? "unknown"}` +
-      ` cluster_bytes=${result.clusterBytes ?? 0} file_system=${result.fileSystem ?? ""}` +
+      ` cluster_bytes=${result.clusterBytes ?? 0} file_system=${csvCell(result.fileSystem ?? "")}` +
       ` elevated=${result.elevated ?? "unknown"}`,
     `# total_size_bytes=${result.totalSize} total_files=${result.totalFiles} errors=${result.errors}`,
     `# cancelled=${result.cancelled} skipped_cloud=${result.skippedCloud ?? 0}` +
@@ -473,6 +483,11 @@ export function buildHistoryCsv(history: History, options: ExportOptions = {}): 
   const rows: string[] = [
     `# discan history export exported_at=${new Date().toISOString()}`,
     "# NOTE: one row per scan run; sizes are logical bytes with the same basis as the run.",
+    // 다른 내보내기(csvPreamble)와 같은 수식 인젝션 무력화 고지. 이력 경로에 선두
+    // 위험 문자가 있어 작은따옴표가 붙은 경우, 이력 CSV 만 본 감사 소비자도 그 접두어의
+    // 근거와 원본 복원법을 알 수 있어야 산출물 간 감사 규칙이 일관된다.
+    "# NOTE: cells starting with = + - @ tab or CR are prefixed with a single quote (') to disable" +
+      " spreadsheet formula execution - strip the leading quote to recover the original value.",
     // dedup(및 dedup_min_bytes)이 빠지면, 같은 경로를 hardlink/none 으로 각각 스캔한
     // 두 스냅샷의 총량 차이(WinSxS·패키지 캐시가 링크 수만큼 재계수됨)를 내보낸
     // 시계열만으로는 재구성할 수 없어 감사 추적이 끊긴다.

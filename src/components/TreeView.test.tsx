@@ -77,6 +77,33 @@ describe("단축키", () => {
     await userEvent.keyboard("c");
     expect(onCopyPath).toHaveBeenCalledWith("C:\\photos");
   });
+
+  it("표준 문자가 아닌 행에서 O/C 는 조용한 no-op 대신 이유를 낭독한다", async () => {
+    // 예전에는 lossyPath 행에서 O/C 가 알림 없이 return 해, 키보드·낭독 사용자는
+    // '왜 안 되는지'를 알 수 없었다. 행 이름에도 조작 불가 사실을 싣는다.
+    const onReveal = vi.fn();
+    const onCopyPath = vi.fn();
+    const lossy: ScanNode = { ...dir("weird"), lossyPath: true };
+    render(
+      <TreeView
+        root={{ ...ROOT, children: [lossy] }}
+        onRescan={noop}
+        onReveal={onReveal}
+        onCopyPath={onCopyPath}
+      />,
+    );
+    const row = screen.getByRole("row", { name: /weird/ });
+    // 포커스 낭독만으로 이 행이 조작 불가임이 전달돼야 한다.
+    expect(row).toHaveAccessibleName(/열기·복사 불가/);
+    row.focus();
+
+    await userEvent.keyboard("o");
+    expect(onReveal).not.toHaveBeenCalled();
+    await userEvent.keyboard("c");
+    expect(onCopyPath).not.toHaveBeenCalled();
+    // 라이브 리전으로 이유를 알린다(무피드백 no-op 이 아니다).
+    expect(screen.getByText(/열기·복사를 지원하지 않습니다/)).toBeInTheDocument();
+  });
 });
 
 describe("검색 종료", () => {

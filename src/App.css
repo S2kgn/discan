@@ -1066,6 +1066,14 @@ body {
   color: var(--text-dim);
 }
 
+/* 안심 문구는 결과 화면에서 상시 보여야 한다 — 삭제를 걱정하는 사용자가 가장 오래
+   머무는 화면이다. 경고가 아니라 안심이므로 중립 회색 한 줄로 둔다(패널 머리 아래). */
+.tip-reassure {
+  margin: 0 0 8px;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+}
+
 /* title 속성은 키보드 포커스만으로는 열리지 않는다. 눌러서 여는 버튼으로 바꿨다. */
 .panel-info {
   margin-left: 6px;

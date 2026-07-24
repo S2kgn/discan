@@ -115,6 +115,10 @@ const MAX_FAILED_PATHS: usize = 500;
 /// 자릿수 단위로 줄고 잡아내는 중복은 거의 그대로다. 이 하한 미만에서 놓친 중복이
 /// 있을 수 있다는 사실은 결과의 `dedupMinBytes` 로 함께 나간다 — 값이 결과에 없으면
 /// 사용자는 '중복 제거했다'를 전량으로 오인한다.
+///
+/// 하한을 넘는 파일이 그래도 수백만 개인 대형 미디어·데이터 드라이브가 있으므로,
+/// 색인 자체의 크기도 `MAX_IDS_PER_SHARD` 로 상한을 둔다(다른 모든 축과 같은
+/// 자기-DoS 방어다). 이 하한과 그 상한이 함께 색인 메모리의 천장을 정한다.
 pub const DEFAULT_HARDLINK_MIN_BYTES: u64 = 64 * 1024;
 
 /// 하드 링크 판정 집합의 샤드 수.
@@ -122,6 +126,24 @@ pub const DEFAULT_HARDLINK_MIN_BYTES: u64 = 64 * 1024;
 /// 하한을 넘는 파일마다 집합을 두드리므로 단일 뮤텍스면 워커 수만큼 경합이 는다.
 /// 파일 ID 하나가 잠그는 것이 자기 샤드뿐이면 그 경합이 사실상 사라진다.
 const ID_SHARDS: usize = 32;
+
+/// 하드 링크 판정 색인의 **샤드당** 상한.
+///
+/// 확장자 키·실패 경로·파일 후보·노드 수에는 모두 상한이 있는데 이 색인만 열려
+/// 있으면 자기-DoS 경로가 하나 남는다(`DEFAULT_HARDLINK_MIN_BYTES` 가 규모를
+/// 줄이긴 하지만, >하한 대형 파일이 수백만 개인 드라이브에서는 하드 링크가 거의
+/// 없어도 항목당 십수 바이트가 파일 수에 비례해 쌓인다).
+///
+/// 상한에 닿으면 **새 실체를 더 추적하지 않고 '처음 본 것'으로 취급한다** — 이미
+/// 추적 중인 실체의 중복 제거는 그대로 동작하고(중복은 계속 걸린다), 상한 이후의
+/// 새 파일만 과다 계수(하한 미만 구간과 같은 알려진 방향)로 떨어질 뿐 **없는 용량을
+/// 지우지는 않는다**. 잘못된 중복 제거가 조용한 누락보다 나쁘다는 이 파일의 원칙과
+/// 같은 방향이다.
+///
+/// `ID_SHARDS × 이 값 × 항목 하나(≈16~20바이트)`가 색인 메모리의 천장이다
+/// (32 × 131,072 ≈ 419만 항목, ~80MB). 실제 하드 링크 집합(WinSxS 등)은 수만 규모라
+/// 이 상한은 정상 스캔의 중복 제거 정확도에 닿지 않는다.
+const MAX_IDS_PER_SHARD: usize = 1 << 17;
 
 #[derive(Serialize, Clone)]
 pub struct Node {
@@ -650,7 +672,16 @@ impl<'a> ScanCtx<'a> {
         let mut set = self.seen_ids[shard]
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        set.insert((self.volume_serial, id))
+        let key = (self.volume_serial, id);
+        // 상한 미만이면 평소처럼 삽입 결과가 곧 '처음 봤는가'다.
+        if set.len() < MAX_IDS_PER_SHARD {
+            return set.insert(key);
+        }
+        // 상한에 닿은 뒤에는 새 실체를 담지 않는다(`MAX_IDS_PER_SHARD` 주석 참조).
+        // 이미 담긴 실체의 중복 판정은 유지하되(present → false → 중복 제거), 새 실체는
+        // '처음 본 것'(true)으로 돌려 과다 계수 쪽으로 떨어뜨린다 — 없는 용량을
+        // 지우는 것보다 낫고, 색인은 더 자라지 않는다.
+        !set.contains(&key)
     }
 
     /// 디렉터리 하나가 모은 할당 바이트를 합친다(파일마다 원자 연산을 하면
@@ -2010,6 +2041,38 @@ mod tests {
         ));
     }
 
+    /// 압축·희소 판정은 '점유를 얼마나 단정할 수 있는가'를 화면에 알리는 근거다
+    /// (`allocUncertainFiles`/`Bytes`). 마스크를 하나 잘못 쓰면 정상 파일이 '불확실'로
+    /// 잡혀 화면이 근거 없이 물러서거나, 압축·희소 파일이 '확실'로 잡혀 근거 없이
+    /// 단정한다. `is_cloud_placeholder_attrs` 처럼 순수 함수 표 테스트로 마스크 오타를
+    /// 조기에 잠근다 — 압축·희소 파일 픽스처는 만들기 까다로워 카운터 누적까지의
+    /// 통합 검증은 두지 않지만, 오차가 실제로 들어오는 지점은 이 비트 판정이다.
+    #[test]
+    fn alloc_uncertain_tracks_only_compressed_or_sparse() {
+        // 상수가 오타로 어긋나면 판정이 통째로 무의미해진다. MSDN 값을 십진수로
+        // 한 번 더 못 박아 자릿수 실수를 잡는다.
+        assert_eq!(FILE_ATTRIBUTE_COMPRESSED, 2048);
+        assert_eq!(FILE_ATTRIBUTE_SPARSE_FILE, 512);
+
+        // 둘 중 하나라도 서면 불확실이다.
+        assert!(is_alloc_uncertain(FILE_ATTRIBUTE_COMPRESSED));
+        assert!(is_alloc_uncertain(FILE_ATTRIBUTE_SPARSE_FILE));
+        assert!(is_alloc_uncertain(
+            FILE_ATTRIBUTE_COMPRESSED | FILE_ATTRIBUTE_SPARSE_FILE
+        ));
+        // 다른 속성과 섞여도 판정은 유지된다.
+        assert!(is_alloc_uncertain(FILE_ATTRIBUTE_COMPRESSED | 0x20)); // + ARCHIVE
+        assert!(is_alloc_uncertain(
+            FILE_ATTRIBUTE_SPARSE_FILE | FILE_ATTRIBUTE_REPARSE_POINT
+        ));
+
+        // 둘 다 없으면 확실이다 — 정상 파일을 '불확실'로 적으면 화면이 근거 없이 물러선다.
+        assert!(!is_alloc_uncertain(0));
+        assert!(!is_alloc_uncertain(0x20)); // ARCHIVE
+        assert!(!is_alloc_uncertain(FILE_ATTRIBUTE_REPARSE_POINT)); // 재해석 지점 단독
+        assert!(!is_alloc_uncertain(FILE_ATTRIBUTE_OFFLINE));
+    }
+
     #[test]
     fn error_kind_maps_os_codes_users_will_act_on() {
         use std::io::Error;
@@ -2527,6 +2590,48 @@ mod tests {
             // 디렉터리 열거가 파일 ID 를 주지 않는 플랫폼에서는 이유가 다르다.
             assert_eq!(dedup_disabled_reason("NTFS"), "unsupportedPlatform");
         }
+    }
+
+    /// 하드 링크 판정 색인은 무한히 자라지 않는다. 다른 모든 축이 자기-DoS 를 막으려
+    /// 상한을 둔 것과 같은 방어다. 상한에 닿으면 새 실체는 담지 않되, **이미 담긴
+    /// 실체의 중복 판정은 그대로 유지**되어야 한다 — 그러지 않으면 상한 도달이 곧
+    /// '없는 용량 삭제'가 된다.
+    #[test]
+    fn seen_id_index_is_bounded_and_still_dedups_known_ids() {
+        let progress = Progress::new();
+        let ctx = ScanCtx::new(&progress, &ScanOptions::default());
+
+        // 32 의 배수 ID 는 모두 샤드 0 이라, 한 샤드만으로 상한을 실제로 관측한다.
+        let early = 32u64; // 상한에 닿기 전에 담기는 실체
+        assert!(ctx.mark_file_id(early), "처음 본 실체는 true 여야 한다");
+        // 상한이 찰 때까지 서로 다른 실체로 채운다(early 포함 정확히 상한만큼).
+        for i in 1..MAX_IDS_PER_SHARD {
+            ctx.mark_file_id((i as u64 + 1) * 32);
+        }
+        assert_eq!(
+            ctx.seen_ids[0].lock().unwrap().len(),
+            MAX_IDS_PER_SHARD,
+            "샤드가 상한까지 찼어야 한다"
+        );
+
+        // 상한에 닿은 뒤 **새** 실체는 담기지 않고 '처음 본 것'으로 취급된다
+        // (과다 계수 방향 — 없는 용량을 지우지 않는다).
+        let over = 12_345_678u64 * 32;
+        assert!(
+            ctx.mark_file_id(over),
+            "상한 뒤 새 실체는 처음 본 것으로 취급"
+        );
+        assert_eq!(
+            ctx.seen_ids[0].lock().unwrap().len(),
+            MAX_IDS_PER_SHARD,
+            "상한 뒤에는 색인이 더 자라지 않아야 한다"
+        );
+
+        // 그러나 이미 담긴 실체의 중복 판정은 상한 뒤에도 유지된다.
+        assert!(
+            !ctx.mark_file_id(early),
+            "이미 본 실체는 상한 뒤에도 중복(false)으로 판정되어야 한다"
+        );
     }
 
     /// 전역 상위 30개만으로는 '기타'를 분해할 수 없다. 미분류의 전형은 중간 크기

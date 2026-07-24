@@ -55,8 +55,9 @@ function ResultHeaderImpl({
     <>
       <section className="stat-row">
         <div className="stat">
-          {/* GiB 설명은 펼친 대상 패널에만 있어 결과 화면에서는 사라졌다. 1차 지표
-              타일에 상시 툴팁으로 붙여 '이 숫자가 탐색기의 GB와 같은 값'임을 남긴다. */}
+          {/* GiB = 탐색기 GB 설명. title 툴팁은 마우스 호버로만 열리므로 이것만으로는
+              터치·키보드·낭독에 닿지 못한다 — 도달 가능한 본체는 아래 '집계 조건'
+              (basisLines)에 넣어 키보드로 펼칠 수 있게 했고, 이 툴팁은 마우스 편의로만 둔다. */}
           <span
             className="stat-value"
             title="GiB = 탐색기가 'GB'로 적는 값과 같은 계산입니다 (1 GiB = 1024 MiB)."
@@ -89,7 +90,10 @@ function ResultHeaderImpl({
           <div className="stat">
             <span className="stat-value">
               <span className="num">
-                {tipsLowerBound && "≥ "}
+                {/* 정리 후보 합계는 세 곳(이 타일·정리 패널 헤드라인·카드)에서 같은 값을
+                    낸다. 하한 표식을 '최소'로 통일해 비전문가가 '≥'·'합계 ≥'와 같은
+                    숫자인지 확신하지 못하는 일을 없앤다. */}
+                {tipsLowerBound && "최소 "}
                 {formatBytesParts(tipsTotal).value}
               </span>
               <span className="unit">{formatBytesParts(tipsTotal).unit}</span>

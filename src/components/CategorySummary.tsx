@@ -383,70 +383,87 @@ function CategorySummaryImpl({
             )}
           </div>
 
-          {/* 트리에만 열 머리글이 있고 이 목록에는 없으면, 같은 우측 정렬 수치 열 구조를
-              쓰면서 의미만 사라진다(낭독 시에는 아예 열 이름이 없다). */}
-          <div className="cat-head" role="presentation">
-            <span className="cat-dot" />
-            <span className="cat-label">{axis === "ext" ? "확장자" : "분야"}</span>
-            <span className="cat-pct">비중</span>
-            {/* 본문과 같은 `1fr 30px` 그리드를 유지해야 머리글과 숫자열의 축이 맞는다. */}
-            <span className="cat-size">
-              <span className="num">용량</span>
-            </span>
-            <span className="cat-files">파일</span>
-          </div>
+          {/* 예전에는 cat-head 가 role="presentation" 이라, 시각적으로는 '분야/비중/용량/
+              파일' 4열 표처럼 보이는데 열 머리글과 셀의 대응이 낭독에 전달되지 않았다.
+              TreeView(treegrid)와 달리 이 목록은 펼침·포커스가 없는 정적 표라 role="table"
+              로 모델링해, 머리글 행과 각 셀에 role 을 주어 시각·비시각 표현을 일치시킨다.
+              (색 점은 TreeView 의 펼침 아이콘과 같이 머리글만 이름을 갖고 본문 셀은
+              장식이라 aria-hidden 으로 숨긴다.) */}
+          <div className="cat-table" role="table" aria-label={AXIS_CHART_LABEL[axis]}>
+            <div className="cat-head" role="row">
+              <span className="cat-dot" role="columnheader" aria-label="색" />
+              <span className="cat-label" role="columnheader">
+                {axis === "ext" ? "확장자" : "분야"}
+              </span>
+              <span className="cat-pct" role="columnheader">
+                비중
+              </span>
+              {/* 본문과 같은 `1fr 30px` 그리드를 유지해야 머리글과 숫자열의 축이 맞는다. */}
+              <span className="cat-size" role="columnheader">
+                <span className="num">용량</span>
+              </span>
+              <span className="cat-files" role="columnheader">
+                파일
+              </span>
+            </div>
 
-          <ul className="cat-list">
-            {rows.map((c) => {
-              // 목록 열은 자릿수를 고정해야 소수점이 세로로 맞는다.
-              const size = formatBytesParts(c.size, { fixedDigits: 1 });
-              const warning = CATEGORY_WARNINGS[c.key];
-              const label = labelOf(c);
-              const cross = crossOf(c);
-              return (
-                <li key={c.key} className="cat-row">
-                  <span className="cat-dot" style={{ background: categoryColor(c) }} />
-                  <span className="cat-label">
-                    <span className="cat-name">{label}</span>
-                    {/*
-                      바로 위 배너가 같은 내용을 전문으로 이미 냈다면 이 행의 배지는
-                      정보를 더하지 않으면서 호버해야만 읽히는 요소로 남는다
-                      (설명이 title 에만 있어 터치·키보드 사용자에게는 '주의' 두 글자뿐이다).
-                      배너가 다루지 않는 행에서만 배지를 남긴다.
-                    */}
-                    {warning && !(axis === "hint" && topWarning?.stat.key === c.key) && (
-                      <span className="cat-warn" title={warning} aria-label={warning}>
-                        주의
-                      </span>
-                    )}
-                    {/* '기타 1.65 GiB 가 미분류'라는 사실만 알고 끝나면 분류표를 개선할
-                        길이 없다. 그 덩어리를 분해하는 경로를 행에 노출하되, 이름보다
-                        먼저 접히게 해서 행의 1차 식별자를 밀어내지 않는다. */}
-                    {cross && (
-                      <button
-                        type="button"
-                        className="link-btn"
-                        aria-label={`${label} — ${cross.text}로 보기`}
-                        onClick={cross.run}
-                      >
-                        {cross.text}
-                      </button>
-                    )}
-                  </span>
-                  <span className="cat-pct" aria-label={`${label} 비중`}>
-                    {formatPercent(percent(c.size, basis))}
-                  </span>
-                  <span className="cat-size" aria-label={`${label} 용량`}>
-                    <span className="num">{size.value}</span>
-                    <span className="unit">{size.unit}</span>
-                  </span>
-                  <span className="cat-files" aria-label={`${label} 파일 수`}>
-                    {c.files > 0 ? `${formatCount(c.files)}개` : ""}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+            <ul className="cat-list" role="rowgroup">
+              {rows.map((c) => {
+                // 목록 열은 자릿수를 고정해야 소수점이 세로로 맞는다.
+                const size = formatBytesParts(c.size, { fixedDigits: 1 });
+                const warning = CATEGORY_WARNINGS[c.key];
+                const label = labelOf(c);
+                const cross = crossOf(c);
+                return (
+                  <li key={c.key} className="cat-row" role="row">
+                    <span
+                      className="cat-dot"
+                      role="cell"
+                      aria-hidden="true"
+                      style={{ background: categoryColor(c) }}
+                    />
+                    <span className="cat-label" role="cell">
+                      <span className="cat-name">{label}</span>
+                      {/*
+                        바로 위 배너가 같은 내용을 전문으로 이미 냈다면 이 행의 배지는
+                        정보를 더하지 않으면서 호버해야만 읽히는 요소로 남는다
+                        (설명이 title 에만 있어 터치·키보드 사용자에게는 '주의' 두 글자뿐이다).
+                        배너가 다루지 않는 행에서만 배지를 남긴다.
+                      */}
+                      {warning && !(axis === "hint" && topWarning?.stat.key === c.key) && (
+                        <span className="cat-warn" title={warning} aria-label={warning}>
+                          주의
+                        </span>
+                      )}
+                      {/* '기타 1.65 GiB 가 미분류'라는 사실만 알고 끝나면 분류표를 개선할
+                          길이 없다. 그 덩어리를 분해하는 경로를 행에 노출하되, 이름보다
+                          먼저 접히게 해서 행의 1차 식별자를 밀어내지 않는다. */}
+                      {cross && (
+                        <button
+                          type="button"
+                          className="link-btn"
+                          aria-label={`${label} — ${cross.text}로 보기`}
+                          onClick={cross.run}
+                        >
+                          {cross.text}
+                        </button>
+                      )}
+                    </span>
+                    <span className="cat-pct" role="cell" aria-label={`${label} 비중`}>
+                      {formatPercent(percent(c.size, basis))}
+                    </span>
+                    <span className="cat-size" role="cell" aria-label={`${label} 용량`}>
+                      <span className="num">{size.value}</span>
+                      <span className="unit">{size.unit}</span>
+                    </span>
+                    <span className="cat-files" role="cell" aria-label={`${label} 파일 수`}>
+                      {c.files > 0 ? `${formatCount(c.files)}개` : ""}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         </>
       )}
     </section>

@@ -74,25 +74,26 @@ function CleanupTipsImpl({ tips, free, minSize, cacheCategory, onReveal, onSearc
           ⓘ
         </button>
       </div>
+      {/* 안심 문구는 접힌 ⓘ 안이 아니라 첫눈에 보여야 한다 — 디스크가 꽉 차 겁이 난
+          사용자가 가장 오래 머무는 화면에서 '이 앱은 안 지운다'가 사라지면, 정작
+          삭제를 걱정하는 사람에게 그 확인이 이 화면에는 없는 셈이 된다. */}
+      <p className="tip-reassure">
+        이 앱은 목록만 보여줍니다 — 아무것도 지우거나 바꾸지 않습니다. 삭제는 탐색기에서 직접
+        확인한 뒤 하십시오.
+      </p>
       {noteOpen && (
         <div className="tip-note" role="note">
-          <p>
-            이 앱은 아무것도 지우지 않습니다 — 삭제는 탐색기에서 직접 확인한 뒤 하십시오. 등급은
-            일반적인 기준이며, 지워도 되는지의 최종 판단은 내용을 보고 하셔야 합니다.
-          </p>
+          <p>등급은 일반적인 기준이며, 지워도 되는지의 최종 판단은 내용을 보고 하셔야 합니다.</p>
           {/*
             집계 규칙 캐비엇.
-            예전에는 헤드라인과 후보 카드 사이에 상시 노출되어 '무엇을 해야 하나'를
-            즉시 알고 싶은 첫눈의 흐름을 세 줄만큼 뒤로 밀었다. ⓘ 는 이제 호버가
-            아니라 눌러서 여는(키보드·터치에서도 닿는) 팝오버이고, 합계에는 여전히
-            ‘최소’ 표식이 붙어 하한임이 드러나므로 해석 조건을 여기로 옮긴다.
+            헤드라인과 후보 카드 사이에 상시 노출하면 '무엇을 해야 하나'를 즉시 알고 싶은
+            첫눈의 흐름을 뒤로 민다. ⓘ 는 눌러서 여는(키보드·터치에서도 닿는) 팝오버이고,
+            합계에는 여전히 ‘최소’ 표식이 붙어 하한임이 드러나므로 해석 조건을 여기로 옮긴다.
+            (분야 합계와의 화해는 아래 tip-goal-note 로 접힘 밖에 상시 노출한다.)
           */}
           <p>
-            후보는 이름으로 확실히 알아볼 수 있는 폴더(캐시·휴지통·node_modules 같은
-            개발용 폴더 등)만 셉니다
-            {cacheCategory && cacheCategory.size > total
-              ? ` — ‘${cacheCategory.label}’로 분류된 ${formatBytes(cacheCategory.size)} 중 ${formatBytes(total)} 입니다. 나머지는 아래 ‘폴더별 용량’에서 직접 확인하십시오.`
-              : " — 나머지는 아래 ‘폴더별 용량’에서 직접 확인하십시오."}
+            후보는 이름으로 확실히 알아볼 수 있는 폴더(휴지통·앱 캐시, 프로그램 개발용 폴더
+            등)만 셉니다 — 나머지는 아래 ‘폴더별 용량’에서 직접 확인하십시오.
             {lowerBound &&
               (minSize !== undefined && minSize > 0
                 ? ` 합계는 화면에 표시된 폴더만 더한 값이라, 용량이 ${formatBytes(minSize)} 미만이거나 너무 깊은 폴더는 목록에 없습니다.`
@@ -102,12 +103,29 @@ function CleanupTipsImpl({ tips, free, minSize, cacheCategory, onReveal, onSearc
       )}
 
       {/* '이걸 지우면 몇 GB 남지?'는 이 패널이 답해야 할 질문이다. 다만 그 답이
-          확정 수치처럼 읽히면 안 된다 — '최소' 표식과 ⓘ 의 해석 조건이 그 몫을 한다. */}
+          확정 수치처럼 읽히면 안 된다 — '최소' 표식과 ⓘ 의 해석 조건이 그 몫을 한다.
+          하한 표식은 화면 전체에서 '최소'로 통일한다(지표 타일·카드도 같은 말을 쓴다):
+          같은 1.57 GiB 가 '≥'·'최소'·'합계 ≥'로 흩어지면 비전문가는 같은 값인지
+          확신하지 못하고 '≥' 기호의 뜻도 모를 수 있다. */}
       <p className="tip-goal">
         후보 합계 {lowerBound && "최소 "}
         {formatBytes(total)}
         {safeTotal > 0 && safeTotal < total && ` (그중 ‘안전’ 항목 ${formatBytes(safeTotal)})`}
       </p>
+      {/*
+        분야 합계와의 화해 다리 — 접힘 밖에 상시 노출한다.
+        KPI 타일·헤드라인은 '정리 후보 1.57 GiB'를, 아래 분야 패널은 '캐시 12.6 GiB'를
+        모두 크게 낸다. 두 숫자를 잇는 문장이 접힌 ⓘ 안에만 있으면, 8배 차이 나는 두
+        헤드라인이 첫눈에 모순으로 읽힌다('지울 수 있는 게 1.6인가 12.6인가'). '전체 vs
+        이름으로 확실한 부분' 관계임을 클릭 없이 즉시 전달한다.
+      */}
+      {cacheCategory && cacheCategory.size > total && (
+        <p className="tip-goal-note">
+          ‘{cacheCategory.label}’로 분류된 {formatBytes(cacheCategory.size)} 가운데, 이름으로
+          확실히 알아볼 수 있는 {formatBytes(total)}만 후보로 셌습니다 — 나머지는 아래 ‘폴더별
+          용량’에서 확인하십시오.
+        </p>
+      )}
       {/*
         도달점은 두 개다.
         '안전' 항목만 정리했을 때와 후보를 전부 정리했을 때를 나란히 내면, 등급의
@@ -166,9 +184,11 @@ function CleanupTipsImpl({ tips, free, minSize, cacheCategory, onReveal, onSearc
                   {/* 여러 폴더의 합계를 한 폴더의 크기로 읽히게 두면 그냥 거짓말이다.
                       가지치기된 트리에서 나온 값이면 취소된 스캔과 같은 관용으로 ≥ 를 붙인다. */}
                   {multi && <span className="tip-approx">합계</span>}
+                  {/* 하한 표식은 화면 전체에서 '최소'로 통일한다 — 비전문가에게 '≥'
+                      기호보다 '표시된 폴더만 더한 값이라 실제로는 더 큼'이 곧바로 읽힌다. */}
                   {tip.isLowerBound && (
                     <span className="tip-approx" title="표시된 폴더만 더한 값이라 실제로는 더 큽니다">
-                      ≥
+                      최소
                     </span>
                   )}
                   {size.value} {size.unit}

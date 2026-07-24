@@ -102,13 +102,22 @@ mod imp {
         CloseHandle, ERROR_HANDLE_EOF, ERROR_NO_MORE_FILES, HANDLE, INVALID_HANDLE_VALUE,
     };
     use windows_sys::Win32::Storage::FileSystem::{
-        CreateFileW, FileIdBothDirectoryInfo, FileIdBothDirectoryRestartInfo,
-        GetFileInformationByHandleEx, FILE_FLAG_BACKUP_SEMANTICS, FILE_ID_BOTH_DIR_INFO,
-        FILE_LIST_DIRECTORY, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+        CreateFileW, FileAttributeTagInfo, FileIdBothDirectoryInfo, FileIdBothDirectoryRestartInfo,
+        GetFileInformationByHandleEx, FILE_ATTRIBUTE_TAG_INFO, FILE_FLAG_BACKUP_SEMANTICS,
+        FILE_FLAG_OPEN_REPARSE_POINT, FILE_ID_BOTH_DIR_INFO, FILE_LIST_DIRECTORY,
+        FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
     };
 
     const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x10;
     const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+
+    /// 대상을 **바꾸는** 재해석 지점(링크)의 태그. std 의 `is_symlink` 이 참으로
+    /// 보는 것이 정확히 이 둘이며, 클라우드·WOF·중복제거 같은 나머지 재해석 지점과
+    /// 구분된다. windows-sys 는 이 값을 `Win32_System_SystemServices` feature 에 두는데,
+    /// 상수 둘 때문에 모듈 전체를 켜기보다(공격 표면·빌드 시간을 늘린다) 이 파일의
+    /// `FILE_ATTRIBUTE_*` 상수들과 같은 방식으로 둔다. 값은 MSDN 고정값이다.
+    const IO_REPARSE_TAG_MOUNT_POINT: u32 = 0xA000_0003;
+    const IO_REPARSE_TAG_SYMLINK: u32 = 0xA000_000C;
 
     /// 열거 버퍼 크기(u64 단위 = 64KiB).
     ///
@@ -162,14 +171,85 @@ mod imp {
         out
     }
 
-    pub fn read_dir(path: &Path) -> std::io::Result<Listing> {
-        let wide = wide_path(path);
-
-        // 재해석 지점을 **따라간다**(`OPEN_REPARSE_POINT` 를 주지 않는다). `read_dir`
-        // 과 같은 의미를 유지해야 OneDrive 동기화 루트·WOF 압축 디렉터리를 정상적으로
-        // 내려갈 수 있다. 링크를 따라가지 않는 방어는 호출자가 항목 단위로 건다.
+    /// 열거용 디렉터리 핸들을 연다. 재해석 지점 바꿔치기(TOCTOU)를 좁히기 위해
+    /// **먼저 재해석 지점을 따라가지 않고** 열어 정체를 확인한다.
+    ///
+    /// 호출자(`scan_dir`)는 `read_dir` 직전에 `is_redirecting_link` 로 링크를 거르지만,
+    /// 그 판정과 이 `CreateFileW` 사이의 창에서 대상이 심볼릭 링크(→ `\\attacker\share`)
+    /// 로 바뀌면, 예전 구현은 그 링크를 따라 원격을 열어 현재 사용자의 NTLM 협상을
+    /// 공격자 호스트로 내보냈다 — `resolve_root` 가 세 겹으로 막아 둔 바로 그 위협이
+    /// 순회 한복판에서 다시 열린 것이다.
+    ///
+    /// 그래서 첫 열기는 `OPEN_REPARSE_POINT` 로 재해석 지점을 **따라가지 않는다**.
+    /// - 정상 디렉터리(절대다수): 그 핸들로 그대로 열거한다. 이 플래그는 재해석
+    ///   지점이 아닌 대상에는 무영향이라 열거 동작·성능이 그대로다. 바꿔치기된
+    ///   심볼릭 링크는 재해석 지점이라 이 갈래로 오지 않으므로, 공격은 원격 접촉
+    ///   **없이** 아래 링크 갈래에서 걸린다.
+    /// - 링크(심볼릭·정션): 따라가지 않고 거부한다. 호출자가 이미 링크를 거르므로
+    ///   이 거부는 사실상 TOCTOU 창에서만 발동한다.
+    /// - 그 밖의 재해석 지점(OneDrive 클라우드 루트·WOF·중복제거): 따라가야 정상
+    ///   순회가 되므로, 재해석 지점을 따라가는 방식으로 다시 연다(예전 동작 유지).
+    ///
+    /// 근본 해결은 검증된 부모 핸들을 쥐고 `NtQueryDirectoryFile` 로 내려가 경로
+    /// 문자열 바꿔치기가 열거 대상에 닿지 못하게 하는 것이고, 그건 별개 과제다.
+    /// 이 함수는 창을 없애지 못하고 **가장 흔한 공격 형태(정상 디렉터리 → 링크
+    /// 바꿔치기)를 원격 접촉 없이 막는** 부분 완화다.
+    fn open_dir(wide: &[u16]) -> std::io::Result<DirHandle> {
+        // 1) 재해석 지점을 따라가지 않고 연다. 속성/태그 조회를 위해 읽기 권한을 더한다.
         // SAFETY: 널 종료된 UTF-16 경로와 상수 플래그만 넘긴다. 실패는 값으로 돌아온다.
-        let handle = unsafe {
+        let probe = unsafe {
+            CreateFileW(
+                wide.as_ptr(),
+                FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                std::ptr::null(),
+                OPEN_EXISTING,
+                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+                std::ptr::null_mut(),
+            )
+        };
+        if probe == INVALID_HANDLE_VALUE {
+            // 정상 디렉터리는 이 플래그로도 문제없이 열리므로, 실패는 진짜 실패다
+            // (없음·거부 등). 여기서 플래그 없이 다시 열면 바로 그 취약점을 되살린다.
+            return Err(std::io::Error::last_os_error());
+        }
+        let probe = DirHandle(probe);
+
+        // 2) 재해석 지점인지, 링크인지 태그로 가른다.
+        // SAFETY: FILE_ATTRIBUTE_TAG_INFO 는 정수 두 필드짜리 POD 이며 all-zero 가
+        // 유효한 비트 패턴이다.
+        let mut tag: FILE_ATTRIBUTE_TAG_INFO = unsafe { std::mem::zeroed() };
+        // SAFETY: 방금 연 핸들과, 크기를 정확히 넘긴 살아 있는 출력 구조체다.
+        let ok = unsafe {
+            GetFileInformationByHandleEx(
+                probe.0,
+                FileAttributeTagInfo,
+                &mut tag as *mut _ as *mut core::ffi::c_void,
+                core::mem::size_of::<FILE_ATTRIBUTE_TAG_INFO>() as u32,
+            )
+        };
+
+        // 태그를 못 읽었거나 재해석 지점이 아니면, 따라가지 않은 이 핸들로 그대로
+        // 열거한다(원격 접촉이 없는 안전한 기본값). 정상 디렉터리는 전부 이 갈래다.
+        if ok == 0 || tag.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT == 0 {
+            return Ok(probe);
+        }
+
+        // 링크(심볼릭·정션)는 따라가지 않고 거부한다. 원시 OS 코드가 없는 오류라
+        // 호출자의 `error_kind` 가 'other' 로 계상하며, 이는 호출자가 링크를 직접
+        // 거를 때(`is_redirecting_link`)와 같은 갈래다 — 조용히 빠지지 않는다.
+        if tag.ReparseTag == IO_REPARSE_TAG_SYMLINK || tag.ReparseTag == IO_REPARSE_TAG_MOUNT_POINT
+        {
+            return Err(std::io::Error::other(
+                "재해석 지점(링크) 디렉터리는 따라가지 않는다",
+            ));
+        }
+
+        // 링크가 아닌 재해석 지점(클라우드·WOF·중복제거)은 따라가야 정상 순회가 된다.
+        // 예전과 같이 재해석 지점을 따라가는 방식으로 다시 연다.
+        drop(probe);
+        // SAFETY: 위와 같되 OPEN_REPARSE_POINT 를 빼 재해석 지점을 따라간다.
+        let follow = unsafe {
             CreateFileW(
                 wide.as_ptr(),
                 FILE_LIST_DIRECTORY,
@@ -180,10 +260,15 @@ mod imp {
                 std::ptr::null_mut(),
             )
         };
-        if handle == INVALID_HANDLE_VALUE {
+        if follow == INVALID_HANDLE_VALUE {
             return Err(std::io::Error::last_os_error());
         }
-        let dir = DirHandle(handle);
+        Ok(DirHandle(follow))
+    }
+
+    pub fn read_dir(path: &Path) -> std::io::Result<Listing> {
+        let wide = wide_path(path);
+        let dir = open_dir(&wide)?;
 
         let mut buf: Vec<u64> = vec![0; BUF_U64];
         let byte_len = (BUF_U64 * 8) as u32;
@@ -268,5 +353,87 @@ mod imp {
             entries,
             entry_errors: Vec::new(),
         })
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::read_dir;
+    use std::path::{Path, PathBuf};
+    use std::process;
+
+    struct Fixture(PathBuf);
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// 심볼릭 링크(개발자 모드/관리자 필요)와 정션(권한 불필요)을 모두 시도한다.
+    /// 조용히 통과하는 테스트는 없는 테스트보다 나쁘므로, 둘 다 실패하면 건너뛴다.
+    fn make_dir_link(target: &Path, link: &Path) -> bool {
+        if std::os::windows::fs::symlink_dir(target, link).is_ok() {
+            return true;
+        }
+        process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    #[test]
+    fn lists_a_normal_directory() {
+        let root = std::env::temp_dir().join(format!("discan_dirent_{}", process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("a.bin"), b"xyz").unwrap();
+        let fx = Fixture(root);
+
+        let listing = read_dir(&fx.0).expect("정상 디렉터리는 열거되어야 한다");
+        assert!(listing
+            .entries
+            .iter()
+            .any(|e| e.name.to_string_lossy() == "a.bin"));
+        assert!(listing.entry_errors.is_empty());
+    }
+
+    /// 순회 진입 TOCTOU 완화: 링크 디렉터리를 `read_dir` 로 직접 열면 **따라가지 않고
+    /// 거부**한다. 판정과 열기 사이에 대상이 심볼릭 링크(→ 원격)로 바뀌어도 그 링크를
+    /// 따라 원격을 여는 경로를 여기서 닫는다. 대상 디렉터리 자체는 그대로 열린다.
+    #[test]
+    fn refuses_to_follow_a_directory_link() {
+        let base = std::env::temp_dir();
+        let target = base.join(format!("discan_dirent_tgt_{}", process::id()));
+        let link = base.join(format!("discan_dirent_lnk_{}", process::id()));
+        let _ = std::fs::remove_dir_all(&target);
+        let _ = std::fs::remove_dir(&link);
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("a.bin"), b"xyz").unwrap();
+        let _tfx = Fixture(target.clone());
+
+        if !make_dir_link(&target, &link) {
+            eprintln!(
+                "[skip] refuses_to_follow_a_directory_link: 심볼릭 링크·정션 생성 실패(개발자 모드 필요)"
+            );
+            return;
+        }
+
+        // 링크를 따라갔다면 target 의 항목이 나왔을 것이다. 거부되어야 한다.
+        let refused = read_dir(&link).is_err();
+        // 대상은 정상적으로 열린다(완화가 정상 디렉터리를 막지 않는다).
+        let target_entries = read_dir(&target).map(|l| l.entries.len()).unwrap_or(0);
+
+        let _ = std::fs::remove_dir(&link);
+        assert!(
+            refused,
+            "링크 디렉터리를 따라가 열거했다 — TOCTOU 완화가 깨졌다"
+        );
+        assert!(
+            target_entries >= 1,
+            "대상 디렉터리는 정상적으로 열려야 한다"
+        );
     }
 }

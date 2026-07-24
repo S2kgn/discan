@@ -8,6 +8,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# 최소 권한. 이 워크플로가 하는 일은 체크아웃해서 검사하는 것뿐이라 읽기만 있으면 된다.
+# 명시하지 않으면 저장소 기본값(대개 읽기·쓰기)이 그대로 토큰에 실린다.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -51,13 +56,45 @@ jobs:
         working-directory: src-tauri
         run: cargo test --lib
 
-      # 아래 두 스크립트는 프런트엔드 검증 인프라가 갖춰지는 중이라
-      # --if-present 로 둔다. 스크립트가 생기는 순간 자동으로 검사에 편입된다.
       - name: 타입 검사
-        run: npm run typecheck --if-present
+        run: npm run typecheck
 
       - name: 프런트엔드 테스트
-        run: npm run test --if-present
+        run: npm run test
 
       - name: 프런트엔드 빌드
         run: npm run build
+
+  audit:
+    # 공급망 감사. Cargo.lock·package-lock.json 만 읽어 FFI·빌드와 무관하므로
+    # 리눅스 러너가 더 빠르고, check 잡과 병렬로 돌아 임계 경로를 늘리지 않는다.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust 툴체인
+        uses: dtolnay/rust-toolchain@stable
+
+      # 제3자 액션을 하나라도 덜 끌어들이려고 직접 설치한다. 감사 도구 자체가
+      # 공급망 검증인데 그 도구를 가변 태그의 외부 액션으로 들이면 앞뒤가 안 맞는다.
+      - name: cargo-audit 설치
+        run: cargo install cargo-audit --locked
+
+      - name: Cargo 의존성 감사
+        working-directory: src-tauri
+        # 기본 동작은 '실제 취약점(vulnerability)에서만 실패'다. unmaintained·unsound
+        # 경고로는 막지 않는다 — 현재 걸리는 16건이 대부분 Tauri 의 리눅스 전용(GTK3)
+        # 전이 의존성이라 Windows 빌드에는 들어가지도 않고, 우리가 버전을 올릴 수단도
+        # 없다. 그것으로 CI 를 붉히면 통과할 수 없는 문을 세우는 셈이다.
+        run: cargo audit
+
+      - name: Node 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: npm 의존성 감사
+        # 배포 번들에 실제로 들어가는 것만 본다(--omit=dev). 개발 전용 도구체인의
+        # 낮은 등급 권고까지 릴리스 게이트로 삼지 않는다. high 이상에서만 실패.
+        run: npm audit --omit=dev --audit-level=high

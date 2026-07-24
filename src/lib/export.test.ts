@@ -213,6 +213,22 @@ describe("CSV 수식 인젝션 무력화(OWASP)", () => {
     expect(buildTreeCsv(result, "C:\\")).toContain("prefixed with a single quote");
   });
 
+  it("프리앰블의 스캔 루트 경로가 수식 셀로 쪼개지지 않는다", () => {
+    // 익명화가 꺼진 기본 모드에서 루트가 쉼표+수식 트리거를 담으면(Windows 경로에
+    // 쉼표는 합법) 예전에는 `# target=...` 줄이 두 셀로 쪼개져 둘째 셀 `=HYPERLINK(...)`
+    // 가 Excel/Sheets 에서 평가됐다. 줄 전체가 한 셀로 남는지 잠근다.
+    const evilRoot = 'C:\\Report,=HYPERLINK("http://evil",A1)';
+    const csv = buildTreeCsv({ ...result, rootPath: evilRoot }, evilRoot);
+    // 쉼표가 든 값은 csvCell 이 줄 전체를 따옴표로 감싸므로 줄이 " 로 시작한다.
+    const targetLine = csv.split("\r\n").find((l) => l.includes("target="))!;
+    const parsed = cells(targetLine);
+    // 줄 전체가 한 셀로 남아야 한다(쉼표로 쪼갠 둘째 셀이 생기지 않는다).
+    expect(parsed).toHaveLength(1);
+    for (const cell of parsed) {
+      expect(/^[=+\-@\t\r]/.test(cell), `수식으로 평가될 셀: ${JSON.stringify(cell)}`).toBe(false);
+    }
+  });
+
   it("드라이브 문자·일반 이름·수치는 건드리지 않는다", () => {
     // 정상 경로(C:...)·이름(big.iso)·음수 아닌 수치가 오탐으로 무력화되면 안 된다.
     const csv = buildTreeCsv(result, "C:\\");
@@ -448,6 +464,12 @@ describe("buildHistoryCsv", () => {
     const lines = body(buildHistoryCsv(legacy));
     // 헤더 열 수와 행 열 수가 어긋나면 파서가 밀린다. 빈 칸이라도 자리는 지킨다.
     expect(lines[1].split(",")).toHaveLength(10);
+  });
+
+  it("다른 내보내기와 같은 수식 인젝션 무력화·복원 고지를 프리앰블에 남긴다", () => {
+    // 이력 경로에 선두 위험 문자가 있어 작은따옴표가 붙은 경우, 이력 CSV 만 본 감사
+    // 소비자도 그 접두어의 근거와 원본 복원법을 알 수 있어야 산출물 간 규칙이 일관된다.
+    expect(buildHistoryCsv(history)).toContain("prefixed with a single quote");
   });
 });
 
