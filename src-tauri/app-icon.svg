@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Discan">
+  <!--
+    앱 아이콘. 헤더의 브랜드 마크 ◧(반쯤 찬 사각형)를 키운 것이다 — 이 도형 자체가
+    '쓴 공간 vs 빈 공간'이라는 디스크 사용량 은유라 디스크 분석기에 그대로 맞는다.
+    찬 쪽은 분야 색(파랑→청록→호박)으로 채워 '분야별 구성'까지 암시한다.
+    투명 배경 SVG — tauri icon 이 각 크기·포맷으로 래스터화한다.
+  -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b2735"/>
+      <stop offset="1" stop-color="#0f1319"/>
+    </linearGradient>
+    <!-- 쓴 공간 채움: 분야별 구성 스택 바와 같은 색 계열. -->
+    <linearGradient id="used" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a9df2"/>
+      <stop offset="0.55" stop-color="#4ec9d4"/>
+      <stop offset="1" stop-color="#e0b86a"/>
+    </linearGradient>
+    <!-- 디스크 사각형 내부만 채움이 삐져나가지 않게 가둔다(둥근 모서리 유지). -->
+    <clipPath id="disk">
+      <rect x="232" y="232" width="560" height="560" rx="52"/>
+    </clipPath>
+  </defs>
+
+  <!-- 앱 타일. 64px 안전 여백. -->
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#tile)"/>
+
+  <!-- 쓴 공간(왼쪽 ~58%)을 분야 색으로 채운다. -->
+  <g clip-path="url(#disk)">
+    <rect x="232" y="232" width="325" height="560" fill="url(#used)"/>
+    <!-- 쓴/빈 경계선. 작은 크기에서도 두 영역이 갈리게 한다. -->
+    <rect x="551" y="232" width="12" height="560" fill="#0f1319" opacity="0.55"/>
+  </g>
+
+  <!-- 디스크 윤곽. 채움 위에 얹어 형태를 또렷하게. -->
+  <rect x="232" y="232" width="560" height="560" rx="52" fill="none" stroke="#cfe3ff" stroke-width="34"/>
+</svg>
