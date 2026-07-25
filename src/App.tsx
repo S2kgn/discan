@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 
 import { CategorySummary } from "./components/CategorySummary";
 import { CleanupTips } from "./components/CleanupTips";
+import { Duplicates } from "./components/Duplicates";
 import { EmptyState } from "./components/EmptyState";
 import { LargestFiles } from "./components/LargestFiles";
 import { ResultHeader } from "./components/ResultHeader";
@@ -1026,6 +1027,14 @@ function App() {
                 excludedSize={folderExcl?.excludedSize ?? 0}
                 excludedCount={folderExcl?.items.length ?? 0}
                 originalSize={result.totalSize}
+              />
+              {/* 중복 파일 탐지 + 휴지통 정리. 스캔과 별개의 비싼 작업이라 패널 안에서
+                  버튼으로 시작한다. 대상은 방금 스캔한 경로. */}
+              <Duplicates
+                scannedPath={scannedPath}
+                onReveal={handleReveal}
+                onCopyPath={handleCopyPath}
+                onNotify={notify}
               />
             </>
           )}

@@ -5,8 +5,10 @@
 
 mod category;
 mod dirent;
+mod dupes;
 mod scan;
 
+use dupes::{DupeProgress, DupeResult};
 use scan::{Progress, ScanResult};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -34,8 +36,17 @@ struct ScanState {
     current: Mutex<Option<Arc<Progress>>>,
 }
 
+/// 중복 탐지 하나의 수명. 스캔과 별개의 긴 작업이라 자기 상태를 가진다.
+/// 세대까지 두지 않는 이유: 중복 탐지는 완료 직후 재시작 경합이 스캔만큼 잦지 않고,
+/// `running` 플래그가 동시 실행을 막는다. 취소는 현재 진행 객체에 직접 세운다.
+struct DupeState {
+    running: AtomicBool,
+    current: Mutex<Option<Arc<DupeProgress>>>,
+}
+
 struct AppState {
     inner: Arc<ScanState>,
+    dupes: Arc<DupeState>,
 }
 
 /// 정상·오류·패닉·**future 드롭** 어느 경로로 빠져나가도 실행 플래그를 되돌리고,
@@ -912,6 +923,233 @@ async fn start_scan(app: tauri::AppHandle, path: String) -> Result<ScanResult, C
     result
 }
 
+// ---------- 중복 파일 탐지 ----------
+
+#[derive(Serialize, Clone)]
+struct DupeProgressPayload {
+    scanned: u64,
+    hashed: u64,
+    bytes: u64,
+    groups: u64,
+    errors: u64,
+    /// "scanning" | "hashing".
+    phase: &'static str,
+}
+
+/// 스캔의 RunGuard 와 같은 역할: 정상·오류·future 드롭 어느 경로로 나가도 실행
+/// 플래그를 풀고, 순회를 멈추고, 방출 스레드를 끝낸다.
+struct DupeRunGuard {
+    state: Arc<DupeState>,
+    progress: Arc<DupeProgress>,
+    done: Arc<AtomicBool>,
+}
+
+impl Drop for DupeRunGuard {
+    fn drop(&mut self) {
+        self.done.store(true, Ordering::SeqCst);
+        self.progress.cancel.store(true, Ordering::Relaxed);
+        self.state.running.store(false, Ordering::SeqCst);
+    }
+}
+
+/// 진행 중인 중복 탐지를 중단한다.
+#[tauri::command]
+fn cancel_duplicates(app: tauri::AppHandle) -> bool {
+    let state = app.state::<AppState>();
+    if !state.dupes.running.load(Ordering::SeqCst) {
+        return false;
+    }
+    let cur = state
+        .dupes
+        .current
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    match cur.as_ref() {
+        Some(p) => {
+            p.cancel.store(true, Ordering::Relaxed);
+            true
+        }
+        None => false,
+    }
+}
+
+#[tauri::command]
+async fn find_duplicates(app: tauri::AppHandle, path: String) -> Result<DupeResult, CommandError> {
+    let st = {
+        let state = app.state::<AppState>();
+        state.dupes.clone()
+    };
+
+    if st
+        .running
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Err(CommandError::new(
+            "busy",
+            "이미 중복 찾기가 진행 중입니다.",
+            "",
+        ));
+    }
+
+    let progress = Arc::new(DupeProgress::new());
+    {
+        let mut cur = st.current.lock().unwrap_or_else(|e| e.into_inner());
+        *cur = Some(progress.clone());
+    }
+    let done = Arc::new(AtomicBool::new(false));
+    let _guard = DupeRunGuard {
+        state: st.clone(),
+        progress: progress.clone(),
+        done: done.clone(),
+    };
+
+    // 경로 검증은 스캔과 같은 함수로. UNC·장치·원격·링크 우회를 똑같이 막는다.
+    let root = tauri::async_runtime::spawn_blocking({
+        let path = path.clone();
+        move || resolve_root(&path)
+    })
+    .await
+    .map_err(|e| {
+        CommandError::new(
+            "joinError",
+            "경로를 확인하는 작업이 예기치 않게 끝났습니다.",
+            e.to_string(),
+        )
+    })??;
+
+    // 진행 방출.
+    {
+        let app = app.clone();
+        let done = done.clone();
+        let progress = progress.clone();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_millis(200));
+            if done.load(Ordering::SeqCst) {
+                break;
+            }
+            let _ = app.emit(
+                "dupe-progress",
+                DupeProgressPayload {
+                    scanned: progress.scanned.load(Ordering::Relaxed),
+                    hashed: progress.hashed.load(Ordering::Relaxed),
+                    bytes: progress.bytes.load(Ordering::Relaxed),
+                    groups: progress.groups.load(Ordering::Relaxed),
+                    errors: progress.errors.load(Ordering::Relaxed),
+                    phase: progress.phase(),
+                },
+            );
+        });
+    }
+
+    let scan_progress = progress.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        dupes::find_duplicates(&root, dupes::DEFAULT_MIN_BYTES, &scan_progress)
+    })
+    .await
+    .map_err(|e| {
+        CommandError::new(
+            "joinError",
+            "중복 찾기 작업이 예기치 않게 끝났습니다.",
+            e.to_string(),
+        )
+    });
+
+    done.store(true, Ordering::SeqCst);
+    result
+}
+
+// ---------- 정리(휴지통) ----------
+
+#[derive(Serialize)]
+struct DeleteFailure {
+    path: String,
+    error: String,
+}
+
+#[derive(Serialize)]
+struct DeleteResult {
+    /// 실제로 휴지통으로 보낸 경로. 프런트가 이 목록으로 화면을 정확히 갱신한다.
+    deleted: Vec<String>,
+    /// 실패한 경로와 사유.
+    failed: Vec<DeleteFailure>,
+}
+
+/// 삭제 대상으로 받아서는 안 되는 경로인지. 삭제는 되돌리기 어려우므로(휴지통이라도
+/// 폴더째 들어가면 복원이 번거롭다) 파국적 실수를 백엔드에서 막는다.
+fn refuse_delete(path: &str) -> Option<CommandError> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Some(CommandError::new(
+            "emptyPath",
+            "빈 경로는 삭제할 수 없습니다.",
+            "",
+        ));
+    }
+    if is_remote_shaped(trimmed) || is_device_shaped(trimmed) {
+        return Some(CommandError::new(
+            "unsupportedPath",
+            "네트워크·장치 경로는 삭제할 수 없습니다.",
+            trimmed,
+        ));
+    }
+    // 드라이브 루트(`C:\`, `C:`)는 통째로 삭제 대상이 될 수 없다.
+    let norm = trimmed.replace('/', "\\");
+    let stripped = norm.trim_end_matches('\\');
+    if stripped.len() == 2 && stripped.as_bytes()[1] == b':' {
+        return Some(CommandError::new(
+            "unsupportedPath",
+            "드라이브 전체는 삭제할 수 없습니다.",
+            trimmed,
+        ));
+    }
+    None
+}
+
+/// 선택한 경로들을 **휴지통으로** 보낸다(영구 삭제 아님 — 복원 가능).
+///
+/// 각 경로를 개별 처리해 하나가 실패해도 나머지는 진행하고, 성패를 경로 단위로 돌려준다.
+#[tauri::command]
+async fn delete_to_trash(paths: Vec<String>) -> Result<DeleteResult, CommandError> {
+    if paths.is_empty() {
+        return Err(CommandError::new(
+            "emptyPath",
+            "삭제할 항목이 없습니다.",
+            "",
+        ));
+    }
+    // 위험 경로는 하나라도 있으면 **전체를 거부**한다 — 부분 삭제 뒤 오류보다
+    // 시작 전에 막는 편이 안전하다.
+    for p in &paths {
+        if let Some(err) = refuse_delete(p) {
+            return Err(err);
+        }
+    }
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut deleted = Vec::new();
+        let mut failed = Vec::new();
+        for p in paths {
+            match trash::delete(&p) {
+                Ok(()) => deleted.push(p),
+                Err(e) => failed.push(DeleteFailure {
+                    path: p,
+                    error: e.to_string(),
+                }),
+            }
+        }
+        DeleteResult { deleted, failed }
+    })
+    .await
+    .map_err(|e| {
+        CommandError::new(
+            "joinError",
+            "삭제 작업이 예기치 않게 끝났습니다.",
+            e.to_string(),
+        )
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(windows)]
@@ -933,11 +1171,18 @@ pub fn run() {
                 // 첫 스캔이 자기 것을 만들어 끼운다.
                 current: Mutex::new(None),
             }),
+            dupes: Arc::new(DupeState {
+                running: AtomicBool::new(false),
+                current: Mutex::new(None),
+            }),
         })
         .invoke_handler(tauri::generate_handler![
             list_drives,
             start_scan,
-            cancel_scan
+            cancel_scan,
+            find_duplicates,
+            cancel_duplicates,
+            delete_to_trash
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

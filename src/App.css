@@ -2335,3 +2335,179 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---------- 중복 파일 ---------- */
+
+.dupe-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--fs-md);
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.dupe-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: baseline;
+  margin-bottom: 10px;
+  font-size: var(--fs-md);
+  font-variant-numeric: tabular-nums;
+}
+
+.dupe-trunc {
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+}
+
+.dupe-tools {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.dupe-warn {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: 8px;
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+
+.dupe-groups {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 460px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.dupe-group {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--panel-2);
+}
+
+.dupe-group-head {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-bottom: 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dupe-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dupe-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.dupe-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+  cursor: pointer;
+}
+
+.dupe-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: var(--fs-sm);
+}
+
+.dupe-file-actions {
+  display: flex;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.dupe-action {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ---------- 확인 모달 ---------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 55%);
+  display: grid;
+  place-items: center;
+  z-index: 100;
+  padding: 20px;
+}
+
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  padding: 20px 22px;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 45%);
+}
+
+.modal-title {
+  margin: 0 0 12px;
+  font-size: var(--fs-lg);
+  font-weight: 650;
+}
+
+.modal-body {
+  font-size: var(--fs-md);
+  line-height: 1.55;
+}
+
+.modal-body p {
+  margin: 0 0 8px;
+}
+
+.modal-note {
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* 파괴적 동작 확정 버튼 — 채운 빨강. 취소와 시각 위계를 벌린다. */
+.btn.danger-solid {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn.danger-solid:hover:not(:disabled) {
+  filter: brightness(1.08);
+}

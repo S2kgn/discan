@@ -5,6 +5,8 @@ import libRs from "../../src-tauri/src/lib.rs?raw";
 import categoryRs from "../../src-tauri/src/category.rs?raw";
 import typesTs from "../types.ts?raw";
 import useScanTs from "./useScan.ts?raw";
+import useDuplicatesTs from "./useDuplicates.ts?raw";
+import duplicatesTsx from "../components/Duplicates.tsx?raw";
 import appTsx from "../App.tsx?raw";
 import { CATEGORY_COLORS, ScanResult } from "../types";
 import { BACKEND_ERROR_CODES, errorDetail, friendlyError } from "./errors";
@@ -164,6 +166,9 @@ describe("IPC 계약", () => {
     { cmd: "start_scan", args: ["path"] },
     // scanId 는 Option 이라 생략될 수 있다(세대를 모를 때 `{}` 로 부른다).
     { cmd: "cancel_scan", args: ["scanId"] },
+    { cmd: "find_duplicates", args: ["path"] },
+    { cmd: "cancel_duplicates", args: [] },
+    { cmd: "delete_to_trash", args: ["paths"] },
   ];
 
   /** Tauri 2 의 인자 이름 변환 규칙. */
@@ -221,7 +226,7 @@ describe("IPC 계약", () => {
   it("소스에 있는 모든 invoke 호출이 위 표에 있다", () => {
     // 표에 없는 호출이 늘면 그 커맨드는 아무 대조도 받지 못한 채 배포된다.
     const called = new Set(
-      [useScanTs, appTsx].flatMap((src) =>
+      [useScanTs, useDuplicatesTs, duplicatesTsx, appTsx].flatMap((src) =>
         [...src.matchAll(/invoke(?:<[^>]*>)?\(\s*"([a-zA-Z_]+)"/g)].map((m) => m[1]),
       ),
     );
@@ -236,7 +241,7 @@ describe("IPC 계약", () => {
       [...libRs.matchAll(/\.emit\(\s*"([a-zA-Z-]+)"/g)].map((m) => m[1]),
     );
     const listened = new Set(
-      [useScanTs, appTsx].flatMap((src) =>
+      [useScanTs, useDuplicatesTs, duplicatesTsx, appTsx].flatMap((src) =>
         [...src.matchAll(/listen(?:<[^>]*>)?\(\s*"([a-zA-Z-]+)"/g)].map((m) => m[1]),
       ),
     );

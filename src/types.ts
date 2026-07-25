@@ -386,6 +386,49 @@ export interface ScanResult {
   pruneParams?: PruneParams;
 }
 
+/** 내용이 같은 파일 그룹(백엔드 `DuplicateGroup`). */
+export interface DuplicateGroup {
+  /** 파일 하나의 크기(그룹 내 전부 동일). */
+  size: number;
+  count: number;
+  /** 하나만 남기고 지웠을 때 회수되는 용량 = size × (count − 1). */
+  reclaimable: number;
+  paths: string[];
+}
+
+export interface DupeResult {
+  groups: DuplicateGroup[];
+  totalGroups: number;
+  totalReclaimable: number;
+  filesScanned: number;
+  filesHashed: number;
+  bytesHashed: number;
+  /** 다룬 최소 파일 크기 — 이보다 작은 중복은 찾지 않았다. */
+  minBytes: number;
+  errors: number;
+  elapsedMs: number;
+  cancelled: boolean;
+  /** 그룹이 표시 상한에 걸려 잘렸는지. */
+  truncated: boolean;
+}
+
+export interface DupeProgress {
+  scanned: number;
+  hashed: number;
+  bytes: number;
+  groups: number;
+  errors: number;
+  /** "scanning"(크기 수집) | "hashing"(내용 해시). */
+  phase: string;
+}
+
+/** 휴지통 삭제 결과(백엔드 `DeleteResult`). */
+export interface DeleteResult {
+  /** 실제로 휴지통으로 보낸 경로. */
+  deleted: string[];
+  failed: { path: string; error: string }[];
+}
+
 export interface ScanProgress {
   files: number;
   dirs: number;
