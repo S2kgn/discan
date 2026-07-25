@@ -14,15 +14,21 @@ export default defineConfig(async () => ({
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
   // 2. tauri expects a fixed port, fail if that port is not available
+  //
+  // 포트는 5173(Vite 기본)이다. 원래 템플릿 기본값 1420 은 Windows 동적 포트
+  // '제외 범위'(Hyper-V/WSL 예약, 예: 1387–1486)에 들어가는 순간 vite 가 EACCES 로
+  // 죽는다 — 재부팅으로 예약 범위가 옮겨 가면 개발 서버가 통째로 안 뜬다.
+  // `netsh int ipv4 show excludedportrange protocol=tcp` 로 확인할 수 있다.
+  // 5173 이 제외되면 그때 또 옮기면 되고, tauri.conf.json 의 devUrl 도 함께 바꾼다.
   server: {
-    port: 1420,
+    port: 5173,
     strictPort: true,
     host: host || false,
     hmr: host
       ? {
           protocol: "ws",
           host,
-          port: 1421,
+          port: 5174,
         }
       : undefined,
     watch: {
