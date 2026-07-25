@@ -125,6 +125,16 @@ export function Duplicates({ scannedPath, onReveal, onCopyPath, onNotify }: Prop
 
       {result && !running && (
         <>
+          {/* 검사 대상 자체가 상한에 걸려 잘린 경우 — 빠진 중복이 있을 수 있다는 신호라
+              빈 결과·중복 있음 양쪽 위에 먼저 고지한다('중복 없음'을 전량으로 오인하지
+              않게). truncated(표시 축소)와 다른 축이다. */}
+          {result.filesTruncated && (
+            <p className="dupe-warn">
+              <span className="notice-mark" aria-hidden="true">⚠</span>
+              대상 파일이 매우 많아 일부만 검사했습니다 — 빠진 중복이 있을 수 있습니다. 더
+              좁은 폴더를 지정해 다시 찾으면 전체를 확인할 수 있습니다.
+            </p>
+          )}
           {result.groups.length === 0 ? (
             <p className="panel-empty">
               {result.cancelled

@@ -1094,8 +1094,17 @@ fn refuse_delete(path: &str) -> Option<CommandError> {
         ));
     }
     // 드라이브 루트(`C:\`, `C:`)는 통째로 삭제 대상이 될 수 없다.
+    //
+    // verbatim 프리픽스를 먼저 뗀다. `\\?\C:\` 는 `resolve_root` 가 정규화한 뒤의
+    // 표준 형태인데, 이 프리픽스를 그대로 두면 `stripped` 가 `\\?\C:`(길이 6)가 되어
+    // 아래 `len()==2` 검사를 빠져나가고, 위의 `is_remote_shaped`/`is_device_shaped` 도
+    // 로컬 verbatim 은 통과시키므로(그래야 정상 경로가 거부되지 않는다) 드라이브 루트가
+    // 어느 문에도 걸리지 않는다. 이 함수는 프런트 검사가 IPC 직접 호출로 우회될 때의
+    // 최종 신뢰 경계이므로, 정상 흐름에서 도달하지 않더라도 가드가 authoritative 여야 한다.
+    // UNC·device 형태는 이미 위에서 거부됐으므로 여기 남는 verbatim 은 로컬뿐이다.
     let norm = trimmed.replace('/', "\\");
-    let stripped = norm.trim_end_matches('\\');
+    let core = norm.strip_prefix(r"\\?\").unwrap_or(&norm);
+    let stripped = core.trim_end_matches('\\');
     if stripped.len() == 2 && stripped.as_bytes()[1] == b':' {
         return Some(CommandError::new(
             "unsupportedPath",
@@ -1257,6 +1266,45 @@ mod tests {
             resolved.err().map(|e| e.code)
         );
         let _ = std::fs::remove_dir(&root);
+    }
+
+    /// `refuse_delete` 는 프런트 검사가 IPC 직접 호출로 우회될 때의 최종 신뢰 경계다.
+    /// 다른 안전 가드가 모두 테스트로 잠겨 있는데 이 파괴적 동작의 가드만 비어 있었다 —
+    /// 실제로 `\\?\C:\`(resolve_root 정규화 뒤의 표준 형태)가 verbatim 접두사 탓에
+    /// 드라이브 루트 검사를 빠져나가던 회귀를 이 표가 잠근다.
+    #[test]
+    fn refuse_delete_blocks_catastrophic_targets() {
+        // 드라이브 루트는 표기 형태를 불문하고 거부한다(verbatim 포함).
+        for root in [
+            r"C:\", "C:", "C:/", r"c:\", r"\\?\C:\", r"\\?\C:", "  C:\\  ",
+        ] {
+            assert!(
+                refuse_delete(root).is_some(),
+                "드라이브 루트가 삭제 대상으로 통과했다: {root:?}"
+            );
+        }
+        // 네트워크·장치·빈 경로도 거부한다.
+        for bad in [
+            r"\\server\share",
+            "//server/share",
+            r"\\.\PhysicalDrive0",
+            r"\\?\GLOBALROOT\Device\HarddiskVolume1",
+            "",
+            "   ",
+        ] {
+            assert!(
+                refuse_delete(bad).is_some(),
+                "위험 경로가 삭제 대상으로 통과했다: {bad:?}"
+            );
+        }
+        // 정상 파일·폴더 경로는 통과시킨다 — 가드가 과잉 차단하면 기능 자체가 죽는다.
+        for ok in [
+            r"C:\Users\me\dup.bin",
+            r"D:\Photos\a\b.jpg",
+            r"\\?\C:\Users\me\dup.bin",
+        ] {
+            assert!(refuse_delete(ok).is_none(), "정상 경로가 거부됐다: {ok:?}");
+        }
     }
 
     /// 로컬 verbatim 은 정상 경로다. `\\` 접두사만 보고 막던 시절에는

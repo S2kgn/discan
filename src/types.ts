@@ -408,8 +408,13 @@ export interface DupeResult {
   errors: number;
   elapsedMs: number;
   cancelled: boolean;
-  /** 그룹이 표시 상한에 걸려 잘렸는지. */
+  /** 그룹이 표시 상한에 걸려 잘렸는지 — 표시만 줄었을 뿐 셈은 끝났다. */
   truncated: boolean;
+  /**
+   * 검사 대상 경로가 상한에 걸려 잘렸는지 — 못 본 파일이 있어 빠진 중복이 있을 수
+   * 있다는 신호. `truncated`(표시 축소)와 성질이 다르므로 화면이 따로 고지한다.
+   */
+  filesTruncated: boolean;
 }
 
 export interface DupeProgress {

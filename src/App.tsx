@@ -69,6 +69,8 @@ const RECENT_MAX = 3;
 const TOAST_MS = 3500;
 /** 실패 경로는 감사용이라 전부 필요하지 않다. 상위 몇 건이면 어디가 빠졌는지 감이 온다. */
 const FAILED_PREVIEW = 20;
+/** 제로폭 공백. 낭독 리전에 붙여 같은 문구도 텍스트가 바뀌게 한다(스크린리더는 읽지 않음). */
+const ZWSP = String.fromCharCode(0x200b);
 
 function loadRecent(): string[] {
   try {
@@ -132,6 +134,28 @@ function App() {
   const exportBtnRef = useRef<HTMLButtonElement>(null);
   const exportRef = useRef<HTMLDivElement>(null);
 
+  /*
+   * 낭독 리전에 같은 문구를 연속으로 넣으면 텍스트 노드가 그대로라 aria-live 가 다시
+   * 읽지 않는다 — 파일 A·B 를 잇달아 복사하면 두 번째 "경로를 복사했습니다"가, reveal
+   * 실패가 연달으면 두 번째 경고가 조용히 사라진다. 가장 흔한 두 행 동작의 확인
+   * 피드백이 무력화되는 지점이다.
+   *
+   * 매 발화에 제로폭 공백을 0/1개 번갈아 붙여 문자열을 직전과 반드시 다르게 만든다.
+   * 리전마다 별도 토글이라 두 리전이 섞여 불려도 각자 0,1,0,1 로 교차한다(공용 카운터를
+   * 쓰면 인터리빙에서 같은 접미사가 연달아 나올 수 있다). 제로폭 공백은 스크린리더가
+   * 읽지 않고, 시각 채널(토스트)은 손대지 않으므로 보이는 문구는 그대로다.
+   */
+  const liveNonce = useRef(0);
+  const alertNonce = useRef(0);
+  const announce = useCallback((message: string) => {
+    liveNonce.current ^= 1;
+    setLive(message + ZWSP.repeat(liveNonce.current));
+  }, []);
+  const announceAlert = useCallback((message: string) => {
+    alertNonce.current ^= 1;
+    setAlertLive(message + ZWSP.repeat(alertNonce.current));
+  }, []);
+
   const refreshDrives = useCallback(async (selectDefault: boolean) => {
     setDrivesLoading(true);
     try {
@@ -168,8 +192,8 @@ function App() {
     setToast(message);
     setToastTone(tone);
     setToastSticky(tone === "error");
-    if (tone === "error") setAlertLive(message);
-    else setLive(message);
+    if (tone === "error") announceAlert(message);
+    else announce(message);
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     if (tone !== "error") {
       toastTimerRef.current = window.setTimeout(() => setToast(""), TOAST_MS);
@@ -218,17 +242,17 @@ function App() {
    * 흔들리지 않는다 — 예전의 startScanRef 우회가 사라지는 지점이다.
    */
   const scan = useScan({
-    onStart: () => setLive("스캔을 시작했습니다."),
-    onAnnounce: setLive,
+    onStart: () => announce("스캔을 시작했습니다."),
+    onAnnounce: announce,
     onNotify: notify,
     onError: (err) => {
       setError(err);
-      setAlertLive(friendlyError(err));
+      announceAlert(friendlyError(err));
     },
     onTick: (ms, p) => {
       // 낭독 폭주를 막으려고 5초 간격으로만 요약을 갱신한다.
       if (p && Math.floor(ms / 1000) % 5 === 0) {
-        setLive(`스캔 중 ${formatClock(ms)} — ${formatCount(p.files)}개 파일, ${formatBytes(p.bytes)}`);
+        announce(`스캔 중 ${formatClock(ms)} — ${formatCount(p.files)}개 파일, ${formatBytes(p.bytes)}`);
       }
     },
     onResult: (path, res) => {
@@ -275,7 +299,7 @@ function App() {
         }
         return next;
       });
-      setLive(`스캔 완료. 총 ${formatBytes(res.totalSize)}, 파일 ${formatCount(res.totalFiles)}개.`);
+      announce(`스캔 완료. 총 ${formatBytes(res.totalSize)}, 파일 ${formatCount(res.totalFiles)}개.`);
       // 결과가 교체되면 포커스가 있던 트리 행이 언마운트되며 포커스가 body 로 떨어진다.
       window.setTimeout(() => resultsRef.current?.focus(), 0);
       // 정리 후 여유 공간이 바뀌었을 수 있다.
@@ -1029,8 +1053,14 @@ function App() {
                 originalSize={result.totalSize}
               />
               {/* 중복 파일 탐지 + 휴지통 정리. 스캔과 별개의 비싼 작업이라 패널 안에서
-                  버튼으로 시작한다. 대상은 방금 스캔한 경로. */}
+                  버튼으로 시작한다. 대상은 방금 스캔한 경로.
+
+                  key 로 스캔 경로를 준다 — 다른 경로를 스캔하면 이 패널의 상태(중복 결과·
+                  선택·확인 모달)를 통째로 버리고 새로 마운트한다. 그러지 않으면 A 경로의
+                  중복 목록이 B 결과 화면에 남아, 그 목록의 reveal·삭제가 현재 표시된
+                  스캔 밖의 파일을 조작한다. 같은 경로 재스캔은 문자열이 같아 유지된다. */}
               <Duplicates
+                key={scannedPath}
                 scannedPath={scannedPath}
                 onReveal={handleReveal}
                 onCopyPath={handleCopyPath}

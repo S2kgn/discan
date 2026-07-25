@@ -13,7 +13,60 @@ permissions:
   contents: write
 
 jobs:
+  # 태그는 CI 를 발동시키지 않는다(CI 는 main push·PR 에만 돈다). 게이트가 없으면
+  # 검증 안 된 커밋에 붙은 태그가 곧장 서명·배포로 흘러, 설치가 수동인 지금도 위험하고
+  # 인앱 자동 업데이트가 붙는 순간 그 태그가 전 사용자에게 자동 배포된다.
+  # release 는 이 잡을 needs 로 걸어, 서명 키를 만지기 전에 검사부터 통과시킨다.
+  # 검사 항목은 CI(check 잡)와 같게 맞춘다 — 두 문이 다른 기준을 쓰면 게이트의 의미가 없다.
+  verify:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust 툴체인
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Node 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Cargo 캐시
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: 서식 검사
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Rust 테스트
+        working-directory: src-tauri
+        run: cargo test --lib
+
+      - name: 타입 검사
+        run: npm run typecheck
+
+      - name: 프런트엔드 테스트
+        run: npm run test
+
+      - name: 프런트엔드 빌드
+        run: npm run build
+
   release:
+    # 검증을 통과해야만 서명·배포로 넘어간다.
+    needs: verify
     # 대상이 Windows 하나뿐이라 러너도 Windows 다. tauri-action 이 NSIS·MSI 를 굽고
     # createUpdaterArtifacts=true + 서명 키가 있으면 .sig 와 latest.json 까지 만들어 올린다.
     runs-on: windows-latest
