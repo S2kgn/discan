@@ -59,22 +59,51 @@ gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD
   복구 경로는 '전원이 수동으로 재설치'뿐이다. 키 파일과 비밀번호를 서로 다른 곳에
   이중으로 백업할 것.
 
-### endpoints 는 아직 비어 있다
+### endpoints (설정됨)
 
-`plugins.updater.endpoints` 는 **의도적으로 빈 배열**이다. 배포처(GitHub 릴리스)가
-아직 없고, 동작하지 않는 URL 을 진짜인 것처럼 두면 다음 사람이 '설정되어 있다'고
-읽는다. 지금 상태에서 갱신 조회는 `EmptyEndpoints` 오류로 즉시 실패한다 — 조용히
-성공한 척하지 않는다는 뜻이다.
-
-저장소가 생기면 GitHub 릴리스 규약에 맞춰 아래 한 줄을 채운다.
+`plugins.updater.endpoints` 는 GitHub 릴리스의 최신 매니페스트를 가리킨다.
 
 ```json
-"endpoints": ["https://github.com/<owner>/<repo>/releases/latest/download/latest.json"]
+"endpoints": ["https://github.com/S2kgn/discan/releases/latest/download/latest.json"]
 ```
 
-같은 시점에 `src-tauri/capabilities/default.json` 에
-`updater:allow-download-and-install` 을 추가한다(지금은 조회 권한만 열려 있다 —
-설치 흐름이 없는데 설치 권한을 먼저 열 이유가 없다).
+`latest.json` 이 아직 없는 릴리스에서는 조회가 404 로 '갱신 없음' 처리되므로,
+서명 릴리스가 처음 올라가기 전까지도 앱은 안전하게 동작한다.
+
+**아직 남은 것 — 앱 안의 갱신 흐름.** 지금 프런트엔드에는 갱신을 조회·설치하는
+코드가 없고, `capabilities/default.json` 은 `updater:allow-check` 만 연다. 즉
+'서명된 업데이트를 만들어 올리는 쪽'(아래 자동 릴리스)은 갖췄지만, '앱이 그것을
+받아 설치하는 쪽'은 아직이다. 그 UI 를 붙이는 시점에 `capabilities` 에
+`updater:allow-download-and-install` 을 함께 추가한다(설치 흐름이 없는데 설치
+권한을 먼저 열 이유가 없다).
+
+## 자동 릴리스 (GitHub Actions)
+
+`.github/workflows/release.yml` 이 `v*` 태그 푸시에 반응해 서명된 설치본과
+`latest.json` 을 만들어 릴리스에 올린다. 서명은 러너 안에서만 일어나고, 키·비밀번호는
+Actions 시크릿에만 있다.
+
+시크릿 두 개가 필요하다.
+
+- `TAURI_SIGNING_PRIVATE_KEY` — 개인키 파일 내용. **설정 완료.**
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — scrypt 비밀번호. **저장소 소유자가 직접 넣어야 한다**
+  (비밀번호는 자동화 주체의 세션에 두지 않는다).
+
+```powershell
+# 비밀번호 시크릿 등록(값을 입력하라는 프롬프트가 뜬다)
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo S2kgn/discan
+```
+
+두 시크릿이 모두 있으면, 새 버전 릴리스는 아래 한 번으로 끝난다.
+
+```powershell
+# package.json·Cargo.toml·tauri.conf.json 의 version 을 올린 뒤
+git tag v0.1.1
+git push origin v0.1.1     # → Actions 가 서명·빌드·릴리스·latest.json 업로드
+```
+
+비밀번호 시크릿이 없으면 서명 단계에서 실패한다 — 서명 없는 업데이트를 조용히
+내보내지 않기 위한 의도된 동작이다.
 
 ## 콘텐츠 보안 정책(CSP)에 대한 메모
 
