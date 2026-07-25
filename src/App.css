@@ -2217,3 +2217,121 @@ body {
   place-items: center;
   cursor: help;
 }
+
+/* ---------- 트리맵 ---------- */
+
+.tm-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-sm);
+  min-width: 0;
+}
+
+.tm-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tm-crumb-sep {
+  color: var(--text-dim);
+}
+
+.tm-crumb-current {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 28ch;
+}
+
+.tm-crumbs .link-btn {
+  margin-left: 0;
+  max-width: 20ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-hint {
+  margin: 0 0 8px;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+/* 고정 높이 캔버스. 절대배치 타일의 기준면이다. */
+.tm-box {
+  position: relative;
+  width: 100%;
+  height: 440px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel-2);
+}
+
+.tm-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+
+.tm-tile {
+  position: absolute;
+  /* 인접 타일 경계. 배경 위에 1px 틈을 내 타일이 서로 갈린다. */
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 28%);
+  overflow: hidden;
+  cursor: pointer;
+  /* 색이 정보이므로 감쇠하지 않는다. 경계와 라벨로만 구분한다. */
+}
+
+.tm-tile:hover,
+.tm-tile:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+.tm-tile.dir {
+  /* 폴더는 '들어갈 수 있음'을 옅은 상단 띠로 알린다. */
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 28%), inset 0 2px 0 rgb(255 255 255 / 22%);
+}
+
+.tm-label {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 3px 5px;
+  line-height: 1.15;
+  pointer-events: none;
+}
+
+.tm-name {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-size {
+  font-size: 10px;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+.tm-readout {
+  margin: 8px 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

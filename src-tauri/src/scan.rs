@@ -192,6 +192,10 @@ pub struct Node {
     /// 프런트가 실패가 예정된 어포던스를 주지 않게 한다.
     #[serde(rename = "lossyPath")]
     pub lossy_path: bool,
+    /// 파일 노드의 분야 키(`classify_ext` 기준). 디렉터리는 `None`.
+    /// 트리맵이 타일을 분야 색으로 칠할 때 쓴다 — 이미 분류 중이라 비용이 없다.
+    #[serde(rename = "category", skip_serializing_if = "Option::is_none")]
+    pub category: Option<&'static str>,
 }
 
 impl Node {
@@ -214,10 +218,17 @@ impl Node {
             truncated_reason: None,
             incomplete: false,
             lossy_path: false,
+            category: None,
         }
     }
 
-    fn file(name: String, path: String, size: u64, lossy_path: bool) -> Node {
+    fn file(
+        name: String,
+        path: String,
+        size: u64,
+        lossy_path: bool,
+        category: &'static str,
+    ) -> Node {
         Node {
             name,
             path,
@@ -225,6 +236,7 @@ impl Node {
             files: 1,
             is_dir: false,
             lossy_path,
+            category: Some(category),
             ..Node::dir(String::new(), String::new())
         }
     }
@@ -1232,8 +1244,13 @@ fn scan_dir(path: &Path, hint: Option<Category>, ctx: &ScanCtx, depth: u32) -> (
     for cand in candidates.iter() {
         shown_files += 1;
         shown_bytes += cand.0;
-        node.children
-            .push(Node::file(cand.2.clone(), cand.1.clone(), cand.0, cand.4));
+        node.children.push(Node::file(
+            cand.2.clone(),
+            cand.1.clone(),
+            cand.0,
+            cand.4,
+            cand.3,
+        ));
     }
 
     // 노드로 싣지 못한 파일도 개수·바이트를 남긴다. "생략한 것은 개수·크기·사유를

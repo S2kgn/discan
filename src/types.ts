@@ -93,6 +93,8 @@ export interface ScanNode {
    * 무엇을 뺐는지 보이지 않으면 총계가 왜 줄었는지 설명되지 않는다.
    */
   excluded?: boolean;
+  /** 파일 노드의 분야 키(백엔드 `category`). 디렉터리에는 없다. 트리맵 타일 색에 쓴다. */
+  category?: string;
 }
 
 /** 생략 사유를 세 갈래로 정규화한 값. */

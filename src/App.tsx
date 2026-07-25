@@ -7,6 +7,7 @@ import { CleanupTips } from "./components/CleanupTips";
 import { EmptyState } from "./components/EmptyState";
 import { LargestFiles } from "./components/LargestFiles";
 import { ResultHeader } from "./components/ResultHeader";
+import { Treemap } from "./components/Treemap";
 import { TreeView } from "./components/TreeView";
 import {
   CommandError,
@@ -1005,6 +1006,8 @@ function App() {
                 excludedKeys={excludedCats}
                 onToggleExclude={toggleExcludeCat}
               />
+              {/* 트리맵은 실제 디스크 구성을 그대로 보여 준다(제외는 폴더 트리 전용 개념). */}
+              <Treemap root={result.root} onReveal={handleReveal} onCopyPath={handleCopyPath} />
               <LargestFiles
                 files={largestFiles}
                 totalSize={result.totalSize}
